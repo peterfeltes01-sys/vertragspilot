@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Stop-Process *)",
+      "Bash(npx prisma *)",
+      "Bash(node prisma/seed.mjs)"
+    ]
+  }
+}

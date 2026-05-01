@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contract {
+  id                   Int       @id @default(autoincrement())
+  lastCheck            DateTime?
+  kategorie            String
+  vertrag              String
+  web                  String?
+  kundennummer         String?
+  vertragsbeginn       DateTime?
+  aktuellerBeginn      DateTime?
+  vertragsende         DateTime?
+  laufzeit             String?
+  kuendigungsfrist     String?
+  naechsteKuendigung   DateTime?
+  naechsteErinnerung   DateTime?
+  kosten               Float?
+  zahlungsintervall    String?
+  notizen              String?
+  archiviert           Boolean   @default(false)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+}
+
+model Kategorie {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+  icon String @default("📄")
+}
