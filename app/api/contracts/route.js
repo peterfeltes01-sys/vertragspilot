@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 function prepareDates(data) {
   const dateFields = [
     "lastCheck", "vertragsbeginn", "aktuellerBeginn",
-    "vertragsende", "naechsteKuendigung", "naechsteErinnerung",
+    "vertragsende", "naechsteKuendigung", "naechsteErinnerung", "kuendigungsDatum",
   ];
   for (const field of dateFields) {
     if (data[field] === "" || data[field] === undefined) data[field] = null;
@@ -12,6 +12,17 @@ function prepareDates(data) {
   }
   if (data.kosten === "" || data.kosten === undefined) data.kosten = null;
   else if (data.kosten != null) data.kosten = parseFloat(data.kosten);
+  const intFields = ["laufzeitMonate", "kuendigungsfristMonate", "verlaengerungMonate"];
+  for (const field of intFields) {
+    if (data[field] === "" || data[field] === undefined || data[field] === null) data[field] = null;
+    else data[field] = parseInt(data[field]);
+  }
+  if (typeof data.autoVerlaengerung === "string") data.autoVerlaengerung = data.autoVerlaengerung === "true";
+  if (typeof data.gekuendigt === "string") data.gekuendigt = data.gekuendigt === "true";
+  // Remove computed enrichment fields (not stored in DB)
+  delete data.berechnetsVertragsende;
+  delete data.berechneterStatus;
+  delete data.tagesBisKuendigungsfrist;
   return data;
 }
 

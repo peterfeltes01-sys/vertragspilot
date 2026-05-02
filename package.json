@@ -8,7 +8,11 @@
     "start": "next start",
     "db:seed": "node scripts/seed-firebase.mjs"
   },
+  "prisma": {
+    "seed": "node prisma/seed.mjs"
+  },
   "dependencies": {
+    "@vercel/blob": "^2.3.3",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.8.0",
     "next": "^16.2.1",

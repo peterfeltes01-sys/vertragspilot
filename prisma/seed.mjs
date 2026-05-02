@@ -78,6 +78,13 @@ const contracts = [
   { kategorie: "Versicherung / Steuern", vertrag: "Steuern Auto" },
 ];
 
+const reminderDefaults = [
+  { vorlaufTage: 90, bezeichnung: "3 Monate vorher", typ: "dashboard", aktiv: true },
+  { vorlaufTage: 42, bezeichnung: "6 Wochen vorher", typ: "dashboard", aktiv: true },
+  { vorlaufTage: 14, bezeichnung: "2 Wochen vorher", typ: "dashboard", aktiv: true },
+  { vorlaufTage: 3, bezeichnung: "3 Tage vorher – letzte Chance", typ: "dashboard", aktiv: true },
+];
+
 async function main() {
   console.log("🌱 Seeding Kategorien...");
   for (const kat of kategorien) {
@@ -89,14 +96,19 @@ async function main() {
   }
 
   console.log("📑 Seeding Verträge...");
-  // Clear existing
   await prisma.contract.deleteMany();
 
   for (const c of contracts) {
     await prisma.contract.create({ data: c });
   }
 
-  console.log(`✅ ${kategorien.length} Kategorien und ${contracts.length} Verträge angelegt.`);
+  console.log("🔔 Seeding Standard-Erinnerungen...");
+  await prisma.reminderDefault.deleteMany();
+  for (const rd of reminderDefaults) {
+    await prisma.reminderDefault.create({ data: rd });
+  }
+
+  console.log(`✅ ${kategorien.length} Kategorien, ${contracts.length} Verträge und ${reminderDefaults.length} Standard-Erinnerungen angelegt.`);
 }
 
 main()

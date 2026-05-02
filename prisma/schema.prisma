@@ -27,6 +27,82 @@ model Contract {
   archiviert           Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
+  laufzeitMonate       Int?
+  kuendigungsfristMonate Int?
+  autoVerlaengerung    Boolean   @default(true)
+  verlaengerungMonate  Int?
+  gekuendigt           Boolean   @default(false)
+  kuendigungsDatum     DateTime?
+  dokumente            Document[]
+  historie             ContractHistory[]
+  erinnerungen         Reminder[]
+  preisvergleiche      PriceComparison[]
+}
+
+model Document {
+  id           Int      @id @default(autoincrement())
+  contractId   Int
+  contract     Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  dateiname    String
+  dateipfad    String
+  dateityp     String
+  dateigroesse Int
+  bezeichnung  String?
+  kategorie    String   @default("sonstiges")
+  uploadDatum  DateTime @default(now())
+  createdAt    DateTime @default(now())
+}
+
+model ContractHistory {
+  id           Int      @id @default(autoincrement())
+  contractId   Int
+  contract     Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  datum        DateTime @default(now())
+  wirksamAb    DateTime?
+  typ          String
+  titel        String
+  beschreibung String?
+  feldAlt      String?
+  feldNeu      String?
+  createdAt    DateTime @default(now())
+}
+
+model Reminder {
+  id               Int      @id @default(autoincrement())
+  contractId       Int
+  contract         Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  bezeichnung      String?
+  vorlaufTage      Int
+  erinnerungsDatum DateTime
+  typ              String   @default("dashboard")
+  status           String   @default("ausstehend")
+  gesendetAm       DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ReminderDefault {
+  id          Int     @id @default(autoincrement())
+  vorlaufTage Int
+  bezeichnung String
+  typ         String  @default("dashboard")
+  aktiv       Boolean @default(true)
+}
+
+model PriceComparison {
+  id                Int      @id @default(autoincrement())
+  contractId        Int
+  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  anbieter          String
+  marktpreis        Float
+  zahlungsintervall String   @default("monatlich")
+  leistung          String?
+  quelle            String?
+  gueltigBis        DateTime?
+  notizen           String?
+  erfasstAm         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }
 
 model Kategorie {
