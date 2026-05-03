@@ -1384,6 +1384,7 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
             <InputField label="Website / Email" value={form.web} onChange={v => update("web", v)} />
           </div>
           <InputField label="Vertragsbeginn" value={form.vertragsbeginn} onChange={v => update("vertragsbeginn", v)} type="date" />
+          <InputField label="Vertragsende" value={form.vertragsende} onChange={v => update("vertragsende", v)} type="date" />
           <div>
             <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Laufzeit</label>
             <div className="flex gap-2">
