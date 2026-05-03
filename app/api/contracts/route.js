@@ -52,12 +52,17 @@ export async function GET(request) {
 }
 
 export async function POST(request) {
-  const data = await request.json();
-  prepareDates(data);
+  try {
+    const data = await request.json();
+    prepareDates(data);
 
-  delete data.id;
-  data.archiviert = data.archiviert ?? false;
+    delete data.id;
+    data.archiviert = data.archiviert ?? false;
 
-  const contract = await prisma.contract.create({ data });
-  return NextResponse.json(contract, { status: 201 });
+    const contract = await prisma.contract.create({ data });
+    return NextResponse.json(contract, { status: 201 });
+  } catch (err) {
+    console.error("POST /api/contracts error:", err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }

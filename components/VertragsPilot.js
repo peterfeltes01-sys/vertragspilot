@@ -1340,11 +1340,15 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
       if (res.ok) {
         const saved = await res.json();
         onSave(saved, isEdit);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `Serverfehler ${res.status}`);
       }
     } catch (err) {
       alert("Fehler beim Speichern: " + err.message);
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
