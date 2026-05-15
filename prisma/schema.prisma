@@ -33,6 +33,7 @@ model Contract {
   verlaengerungMonate  Int?
   gekuendigt           Boolean   @default(false)
   kuendigungsDatum     DateTime?
+  zuPruefen            Boolean   @default(false)
   dokumente            Document[]
   historie             ContractHistory[]
   erinnerungen         Reminder[]

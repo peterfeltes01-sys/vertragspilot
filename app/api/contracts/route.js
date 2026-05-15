@@ -19,6 +19,7 @@ function prepareDates(data) {
   }
   if (typeof data.autoVerlaengerung === "string") data.autoVerlaengerung = data.autoVerlaengerung === "true";
   if (typeof data.gekuendigt === "string") data.gekuendigt = data.gekuendigt === "true";
+  if (typeof data.zuPruefen === "string") data.zuPruefen = data.zuPruefen === "true";
   // Remove computed enrichment fields (not stored in DB)
   delete data.berechnetsVertragsende;
   delete data.berechneterStatus;

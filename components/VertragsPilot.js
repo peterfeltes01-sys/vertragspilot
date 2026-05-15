@@ -191,6 +191,8 @@ function Dashboard({ contracts, navigate }) {
     return getDaysUntil(c.lastCheck) < -180;
   });
 
+  const zuPruefenContracts = contracts.filter(c => c.zuPruefen);
+
   const urgentRed = urgentContracts.filter(c => (c.days ?? 999) < 30);
   const urgentYellow = urgentContracts.filter(c => { const d = c.days ?? 999; return d >= 30 && d <= 60; });
 
@@ -270,6 +272,30 @@ function Dashboard({ contracts, navigate }) {
           <BarChart data={catCosts.slice(0, 8)} total={totalMonthly} />
         </Card>
       </div>
+
+      {zuPruefenContracts.length > 0 && (
+        <Card className="mb-4">
+          <h3 className="text-[15px] font-bold mb-2" style={{ color: "#F8FAFC" }}>🔎 Zu prüfen ({zuPruefenContracts.length})</h3>
+          <p className="text-xs mb-3" style={{ color: "#94A3B8" }}>Manuell zur Prüfung markiert:</p>
+          <div className="flex flex-col gap-2">
+            {zuPruefenContracts.map(c => (
+              <div
+                key={c.id}
+                className="flex items-center gap-3 rounded-lg px-4 py-3 cursor-pointer"
+                style={{ background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.25)" }}
+                onClick={() => navigate("detail", c)}
+              >
+                <span className="text-base shrink-0">🔎</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: "#F8FAFC" }}>{c.vertrag}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "#94A3B8" }}>{c.kategorie}{c.kosten != null ? ` · ${formatCurrency(toMonthly(c.kosten, c.zahlungsintervall))}/Mo` : ""}</p>
+                </div>
+                <Badge bg="rgba(245,158,11,0.15)" color="#FBBF24">Zu prüfen</Badge>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {staleContracts.length > 0 && (
         <Card className="mb-4">
@@ -1254,6 +1280,7 @@ function ContractDetail({ contract, navigate, onDelete }) {
               ["Zahlungsintervall", contract.zahlungsintervall],
               ["Kosten (Original)", contract.kosten != null ? `${formatCurrency(contract.kosten)} ${contract.zahlungsintervall || ""}` : null],
               ["Letzter Check", formatDate(contract.lastCheck)],
+              ["Zu prüfen", contract.zuPruefen ? "Ja" : null],
             ].map(([label, val]) => (
               <div key={label} className="flex justify-between py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                 <span className="text-sm" style={{ color: "#94A3B8" }}>{label}</span>
@@ -1317,6 +1344,7 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
     kuendigungsDatum: toDateInput(contract?.kuendigungsDatum),
     notizen: contract?.notizen || "",
     lastCheck: toDateInput(contract?.lastCheck) || new Date().toISOString().split("T")[0],
+    zuPruefen: contract?.zuPruefen ?? false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -1428,6 +1456,10 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
           {form.gekuendigt && (
             <InputField label="Kündigungsdatum" value={form.kuendigungsDatum} onChange={v => update("kuendigungsDatum", v)} type="date" />
           )}
+          <div className="flex items-center gap-3 rounded-lg px-3.5 py-2.5" style={{ background: "#0F172A", border: "1px solid #334155" }}>
+            <input type="checkbox" id="zuPruefen" checked={!!form.zuPruefen} onChange={e => update("zuPruefen", e.target.checked)} className="w-4 h-4 cursor-pointer accent-yellow-500" />
+            <label htmlFor="zuPruefen" className="text-sm cursor-pointer" style={{ color: "#E2E8F0" }}>Zu prüfen</label>
+          </div>
           <InputField label="Letzter Check" value={form.lastCheck} onChange={v => update("lastCheck", v)} type="date" />
           <div className="sm:col-span-2">
             <InputField label="Notizen" value={form.notizen} onChange={v => update("notizen", v)} type="textarea" />
