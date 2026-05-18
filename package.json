@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "db:seed": "node scripts/seed-firebase.mjs"
   },
@@ -12,6 +13,7 @@
     "seed": "node prisma/seed.mjs"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "@vercel/blob": "^2.3.3",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.8.0",
@@ -20,7 +22,6 @@
     "react-dom": "^18.3.0"
   },
   "devDependencies": {
-    "@prisma/client": "^6.19.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
     "prisma": "^6.19.3",
