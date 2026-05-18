@@ -36,8 +36,10 @@ model Contract {
   zuPruefen            Boolean   @default(false)
   reminderEnabled      Boolean   @default(true)
   reminderDismissed    DateTime?
-  calendarEventId      String?
-  calendarSynced       Boolean   @default(false)
+  calendarEventId              String?
+  calendarSynced               Boolean   @default(false)
+  calendarEventIdVertragsende  String?
+  calendarSyncedVertragsende   Boolean   @default(false)
   dokumente            Document[]
   historie             ContractHistory[]
   erinnerungen         Reminder[]

@@ -1166,6 +1166,167 @@ function TabComparisons({ contractId, eigeneKosten, eignesIntervall }) {
   );
 }
 
+// ─── Tab: Kalender ───────────────────────────────────
+
+function TabCalendar({ contract }) {
+  const [googleStatus, setGoogleStatus] = useState(null);
+  const [kSynced, setKSynced] = useState(Boolean(contract.calendarSynced));
+  const [vSynced, setVSynced] = useState(Boolean(contract.calendarSyncedVertragsende));
+  const [kLoading, setKLoading] = useState(false);
+  const [vLoading, setVLoading] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/google/status").then(r => r.json()).then(setGoogleStatus);
+  }, []);
+
+  const vertragsendeDatum = contract.berechnetsVertragsende || contract.vertragsende;
+  const hasKuendigung = Boolean(contract.naechsteKuendigung);
+  const hasVertragsende = Boolean(vertragsendeDatum);
+
+  async function syncEvent(type, setSynced, setLoading, extraDate) {
+    setLoading(true);
+    try {
+      const body = { contractId: contract.id, type };
+      if (extraDate) body.date = extraDate;
+      const res = await fetch("/api/calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.results?.[0]?.success) setSynced(true);
+      else alert("Fehler: " + (data.results?.[0]?.error || "Unbekannt"));
+    } catch (err) {
+      alert("Fehler: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeEvent(type, setSynced, setLoading) {
+    if (!confirm("Kalendereintrag entfernen?")) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/calendar/sync/${contract.id}?type=${type}`, { method: "DELETE" });
+      setSynced(false);
+    } catch (err) {
+      alert("Fehler: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function CalendarRow({ label, date, synced, loading, onSync, onRemove, accentColor }) {
+    return (
+      <div className="flex items-center justify-between gap-3 p-4 rounded-xl" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>{label}</p>
+          <p className="text-xs mt-0.5" style={{ color: "#64748B" }}>
+            {date ? formatDate(date) : "Kein Datum hinterlegt"}
+          </p>
+        </div>
+        {googleStatus?.connected && date && (
+          loading ? (
+            <span className="text-xs shrink-0" style={{ color: "#64748B" }}>⟳ …</span>
+          ) : synced ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-xs font-medium" style={{ color: "#34D399" }}>📅 Im Kalender ✓</span>
+              <button onClick={onRemove} className="text-xs" style={{ color: "#475569" }} title="Entfernen">✕</button>
+            </div>
+          ) : (
+            <button
+              onClick={onSync}
+              className="shrink-0 text-xs px-3 py-1.5 rounded-lg font-medium text-white transition-opacity hover:opacity-90"
+              style={{ background: accentColor }}
+            >
+              📅 Eintragen
+            </button>
+          )
+        )}
+        {googleStatus?.connected && !date && (
+          <span className="text-xs shrink-0" style={{ color: "#475569" }}>—</span>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <h3 className="text-[15px] font-bold mb-1" style={{ color: "#F8FAFC" }}>Google Kalender</h3>
+        <p className="text-xs mb-4" style={{ color: "#64748B" }}>
+          Trage Kündigungsfristen und Vertragsenden als Termine in deinen Google Kalender ein.
+        </p>
+
+        {/* Verbindungsstatus */}
+        {googleStatus === null ? (
+          <div className="h-10 rounded-lg mb-4 animate-pulse" style={{ background: "#1E293B" }} />
+        ) : googleStatus.connected ? (
+          <div className="flex items-center gap-2 mb-5 px-3 py-2.5 rounded-lg" style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }}>
+            <span style={{ color: "#34D399" }}>✅</span>
+            <span className="text-sm flex-1 truncate" style={{ color: "#94A3B8" }}>Verbunden als {googleStatus.email}</span>
+            <button
+              onClick={async () => {
+                if (!confirm("Google Kalender-Verbindung trennen?")) return;
+                await fetch("/api/auth/google/disconnect", { method: "POST" });
+                setGoogleStatus({ connected: false, email: null });
+                setKSynced(false);
+                setVSynced(false);
+              }}
+              className="text-xs shrink-0"
+              style={{ color: "#F87171" }}
+            >
+              Trennen
+            </button>
+          </div>
+        ) : (
+          <div className="mb-5">
+            <a
+              href="/api/auth/google"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white"
+              style={{ background: "linear-gradient(135deg, #1D4ED8, #7C3AED)" }}
+            >
+              🔗 Mit Google Kalender verbinden
+            </a>
+            <p className="text-xs mt-2" style={{ color: "#475569" }}>
+              Du wirst zu Google weitergeleitet und kehrst danach hierher zurück.
+            </p>
+          </div>
+        )}
+
+        {/* Event-Einträge */}
+        <div className="space-y-3">
+          <CalendarRow
+            label="⏰ Kündigungsfrist"
+            date={contract.naechsteKuendigung}
+            synced={kSynced}
+            loading={kLoading}
+            onSync={() => syncEvent("kuendigung", setKSynced, setKLoading)}
+            onRemove={() => removeEvent("kuendigung", setKSynced, setKLoading)}
+            accentColor="rgba(239,68,68,0.7)"
+          />
+          <CalendarRow
+            label="📋 Vertragsende"
+            date={vertragsendeDatum}
+            synced={vSynced}
+            loading={vLoading}
+            onSync={() => syncEvent("vertragsende", setVSynced, setVLoading, vertragsendeDatum)}
+            onRemove={() => removeEvent("vertragsende", setVSynced, setVLoading)}
+            accentColor="rgba(139,92,246,0.7)"
+          />
+        </div>
+
+        {!googleStatus?.connected && (
+          <p className="text-xs mt-4 leading-relaxed" style={{ color: "#475569" }}>
+            Hinweis: Kündigungsfrist und Vertragsende werden als ganztägige Termine eingetragen.
+            Google sendet automatisch Erinnerungen per E-Mail und Popup.
+          </p>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ─── Contract Detail ─────────────────────────────────
 
 function ContractDetail({ contract, navigate, onDelete }) {
@@ -1183,9 +1344,10 @@ function ContractDetail({ contract, navigate, onDelete }) {
 
   const tabs = [
     { id: "uebersicht", label: "Übersicht", icon: "📋" },
+    { id: "kalender", label: "Kalender", icon: "📅" },
+    { id: "erinnerungen", label: "Erinnerungen", icon: "🔔" },
     { id: "dokumente", label: "Dokumente", icon: "📎" },
     { id: "verlauf", label: "Verlauf", icon: "📈" },
-    { id: "erinnerungen", label: "Erinnerungen", icon: "🔔" },
     { id: "preisvergleich", label: "Preisvergleich", icon: "💡" },
   ];
 
@@ -1308,6 +1470,7 @@ function ContractDetail({ contract, navigate, onDelete }) {
         </div>
       )}
 
+      {activeTab === "kalender" && <TabCalendar contract={contract} />}
       {activeTab === "dokumente" && <TabDocuments contractId={contract.id} />}
       {activeTab === "verlauf" && <TabHistory contractId={contract.id} />}
       {activeTab === "erinnerungen" && <TabReminders contractId={contract.id} naechsteKuendigung={contract.naechsteKuendigung} />}

@@ -12,7 +12,12 @@ export async function POST() {
   }
 
   await prisma.contract.updateMany({
-    data: { calendarSynced: false, calendarEventId: null },
+    data: {
+      calendarSynced: false,
+      calendarEventId: null,
+      calendarSyncedVertragsende: false,
+      calendarEventIdVertragsende: null,
+    },
   });
 
   return NextResponse.json({ success: true });

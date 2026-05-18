@@ -28,7 +28,8 @@ export interface ContractForSync {
   id: number;
   vertrag: string;
   kategorie: string;
-  naechsteKuendigung: Date;
+  naechsteKuendigung?: Date | null;
+  vertragsende?: Date | null;
   kosten?: number | null;
   zahlungsintervall?: string | null;
   kuendigungsfrist?: string | null;
@@ -100,8 +101,8 @@ function toDateString(date: Date): string {
   return date.toISOString().split('T')[0];
 }
 
-function buildEventPayload(contract: ContractForSync): CalendarEventPayload {
-  const date = toDateString(contract.naechsteKuendigung);
+function buildKuendigungsEventPayload(contract: ContractForSync): CalendarEventPayload {
+  const date = toDateString(contract.naechsteKuendigung!);
   const kostenStr = contract.kosten
     ? `${contract.kosten.toFixed(2)} € (${contract.zahlungsintervall || 'monatlich'})`
     : '—';
@@ -129,6 +130,41 @@ function buildEventPayload(contract: ContractForSync): CalendarEventPayload {
       ],
     },
   };
+}
+
+function buildVertragsEndeEventPayload(contract: ContractForSync): CalendarEventPayload {
+  const date = toDateString(contract.vertragsende!);
+  const kostenStr = contract.kosten
+    ? `${contract.kosten.toFixed(2)} € (${contract.zahlungsintervall || 'monatlich'})`
+    : '—';
+  return {
+    summary: `📋 Vertragsende: ${contract.vertrag}`,
+    description: [
+      `Kategorie: ${contract.kategorie}`,
+      `Kosten: ${kostenStr}`,
+      contract.kundennummer ? `Kundennummer: ${contract.kundennummer}` : '',
+      '',
+      'Verwaltet in VertragsPilot: https://vertragspilot-psi.vercel.app/',
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    start: { date },
+    end: { date },
+    colorId: '5',
+    reminders: {
+      useDefault: false,
+      overrides: [
+        { method: 'email', minutes: 30 * 24 * 60 },
+        { method: 'popup', minutes: 14 * 24 * 60 },
+        { method: 'popup', minutes: 7 * 24 * 60 },
+      ],
+    },
+  };
+}
+
+/** @deprecated use buildKuendigungsEventPayload */
+function buildEventPayload(contract: ContractForSync): CalendarEventPayload {
+  return buildKuendigungsEventPayload(contract);
 }
 
 async function calendarRequest(
@@ -159,7 +195,12 @@ async function calendarRequest(
 }
 
 export async function createCalendarEvent(contract: ContractForSync): Promise<string> {
-  const data = await calendarRequest('', 'POST', buildEventPayload(contract));
+  const data = await calendarRequest('', 'POST', buildKuendigungsEventPayload(contract));
+  return data.id;
+}
+
+export async function createVertragsEndeCalendarEvent(contract: ContractForSync): Promise<string> {
+  const data = await calendarRequest('', 'POST', buildVertragsEndeEventPayload(contract));
   return data.id;
 }
 
@@ -167,7 +208,14 @@ export async function updateCalendarEvent(
   eventId: string,
   contract: ContractForSync
 ): Promise<void> {
-  await calendarRequest(`/${eventId}`, 'PUT', buildEventPayload(contract));
+  await calendarRequest(`/${eventId}`, 'PUT', buildKuendigungsEventPayload(contract));
+}
+
+export async function updateVertragsEndeCalendarEvent(
+  eventId: string,
+  contract: ContractForSync
+): Promise<void> {
+  await calendarRequest(`/${eventId}`, 'PUT', buildVertragsEndeEventPayload(contract));
 }
 
 export async function deleteCalendarEvent(eventId: string): Promise<void> {
