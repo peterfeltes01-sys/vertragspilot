@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
+import { updateCalendarEvent } from "@/lib/google-calendar";
 
 function prepareDates(data) {
   const dateFields = [
@@ -89,6 +90,26 @@ export async function PUT(request, { params }) {
     // Erinnerungen bei Kündigungsfrist-Änderung neu berechnen
     if (contract.naechsteKuendigung) {
       await aktualisierErinnerungen(id, contract.naechsteKuendigung);
+    }
+
+    // Auto-resync Google Calendar wenn Kündigungsfrist sich geändert hat
+    const oldKuendigung = old.naechsteKuendigung?.toISOString();
+    const newKuendigung = contract.naechsteKuendigung?.toISOString();
+    if (oldKuendigung !== newKuendigung && contract.calendarSynced && contract.calendarEventId) {
+      try {
+        await updateCalendarEvent(contract.calendarEventId, {
+          id: contract.id,
+          vertrag: contract.vertrag,
+          kategorie: contract.kategorie,
+          naechsteKuendigung: contract.naechsteKuendigung,
+          kosten: contract.kosten,
+          zahlungsintervall: contract.zahlungsintervall,
+          kuendigungsfrist: contract.kuendigungsfrist,
+          kundennummer: contract.kundennummer,
+        });
+      } catch (calErr) {
+        console.error("Calendar auto-resync failed (non-fatal):", calErr.message);
+      }
     }
 
     return NextResponse.json(contract);

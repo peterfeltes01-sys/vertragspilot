@@ -60,6 +60,29 @@ export interface PriceComparison {
   updatedAt: string;
 }
 
+export interface UpcomingDeadline {
+  id: number;
+  vertrag: string;
+  kategorie: string;
+  naechsteKuendigung: string;
+  kosten: number | null;
+  zahlungsintervall: string | null;
+  kuendigungsfrist: string | null;
+  calendarSynced: boolean;
+  reminderDismissed: string | null;
+}
+
+export interface GoogleAuthStatus {
+  connected: boolean;
+  email: string | null;
+}
+
+export interface CalendarSyncResult {
+  id: number;
+  success: boolean;
+  error?: string;
+}
+
 export interface SavingsResult {
   contractId: number;
   vertrag: string;
