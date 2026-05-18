@@ -120,7 +120,7 @@ function buildKuendigungsEventPayload(contract: ContractForSync): CalendarEventP
       .join('\n'),
     start: { date },
     end: { date },
-    colorId: '11',
+    colorId: '3',
     reminders: {
       useDefault: false,
       overrides: [
@@ -150,7 +150,7 @@ function buildVertragsEndeEventPayload(contract: ContractForSync): CalendarEvent
       .join('\n'),
     start: { date },
     end: { date },
-    colorId: '5',
+    colorId: '3',
     reminders: {
       useDefault: false,
       overrides: [
