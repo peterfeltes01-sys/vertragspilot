@@ -2063,6 +2063,150 @@ function CalendarView({ contracts }) {
   );
 }
 
+// ─── Hilfe ───────────────────────────────────────────
+
+function Hilfe() {
+  const [open, setOpen] = useState(null);
+
+  const sections = [
+    {
+      id: "uebersicht",
+      icon: "📋",
+      title: "Verträge verwalten",
+      items: [
+        { q: "Neuen Vertrag anlegen", a: "Klicke in der Vertragsliste auf \"+ Neu\". Pflichtfelder sind Vertragsname und Kategorie. Alle anderen Felder sind optional." },
+        { q: "Vertrag bearbeiten", a: "Öffne einen Vertrag per Klick und wechsle zum Tab \"Übersicht\". Dort gibt es den Button \"✏️ Bearbeiten\"." },
+        { q: "Vertrag löschen", a: "Im Detail-Tab \"Übersicht\" → \"🗑️ Löschen\". Achtung: alle zugehörigen Dokumente, Erinnerungen und Verlaufsdaten werden mitgelöscht." },
+        { q: "Vertragspartner & Zahlungskonto", a: "Im Formular können ein Vertragspartner (z.B. Telekom) und ein Zahlungskonto (Girokonto, PayPal, VISA …) hinterlegt werden. Konten werden unter ⚙️ Einstellungen verwaltet." },
+      ],
+    },
+    {
+      id: "kuendigungsfristen",
+      icon: "⏰",
+      title: "Kündigungsfristen & Status",
+      items: [
+        { q: "Wie werden Fristen berechnet?", a: "Aus Vertragsbeginn + Laufzeit ergibt sich das Vertragsende. Aus Vertragsende − Kündigungsfrist ergibt sich die Kündigungsfrist. Diese Berechnung läuft automatisch, sobald du Laufzeit und Kündigungsfrist (in Monaten) eingibst." },
+        { q: "Status-Farben", a: "🟢 Aktiv – mehr als 60 Tage bis zur Frist\n🟡 Bald – 30–60 Tage\n🔴 Kritisch – unter 30 Tage\n🔴 Frist verpasst! – Frist bereits überschritten\n⚫ Gekündigt / Ausgelaufen" },
+        { q: "Auto-Verlängerung", a: "Ist die Option aktiv, verlängert sich der Vertrag nach Ablauf automatisch um die eingestellten Monate. Das neue Vertragsende und die neue Kündigungsfrist werden automatisch berechnet." },
+        { q: "Vertrag als gekündigt markieren", a: "Im Formular die Checkbox \"Vertrag gekündigt\" aktivieren und das Kündigungsdatum eintragen. Der Status wechselt auf ⚫ Gekündigt." },
+      ],
+    },
+    {
+      id: "erinnerungen",
+      icon: "🔔",
+      title: "Erinnerungen",
+      items: [
+        { q: "Erinnerungen einrichten", a: "Im Detail-Tab \"Erinnerungen\" können individuelle Erinnerungen mit Vorlaufzeit angelegt werden (z.B. 14 Tage vor der Kündigungsfrist)." },
+        { q: "Frist-Reminder deaktivieren", a: "Im Tab \"Übersicht\" gibt es den Button \"🔔 Aktiv\" / \"🔕 Deaktiviert\". Damit wird der Warn-Status für diesen Vertrag unterdrückt." },
+        { q: "Dashboard-Erinnerungen", a: "Das Dashboard zeigt alle Erinnerungen, deren Datum heute oder früher liegt. Sie verschwinden, sobald du sie als gelesen markierst." },
+      ],
+    },
+    {
+      id: "dokumente",
+      icon: "📎",
+      title: "Dokumente",
+      items: [
+        { q: "Welche Dateien können hochgeladen werden?", a: "PDF, JPEG, PNG und WEBP – jeweils bis zu 4 MB." },
+        { q: "Dokument hochladen", a: "Im Detail-Tab \"Dokumente\" → Bezeichnung und Kategorie wählen → \"📤 Datei auswählen\". Die Datei wird sicher in der Cloud gespeichert." },
+        { q: "Dokument herunterladen", a: "Im Dokumenten-Tab auf den Dateinamen oder den Download-Button klicken. Private Dateien sind nur über den generierten Link zugänglich." },
+      ],
+    },
+    {
+      id: "kosten",
+      icon: "💸",
+      title: "Kosten-Übersicht",
+      items: [
+        { q: "Wie werden Kosten umgerechnet?", a: "Alle Kosten werden intern auf monatliche Basis normiert. Jährliche Kosten ÷ 12, Vierteljährliche ÷ 3. So ist der direkte Vergleich möglich." },
+        { q: "Preisvergleich", a: "Im Detail-Tab \"Preisvergleich\" können Marktpreise anderer Anbieter erfasst werden. Das Einsparpotenzial wird automatisch berechnet." },
+        { q: "Verlauf", a: "Jede Preisänderung oder Tarifänderung kann im Tab \"Verlauf\" manuell eingetragen werden, um die Geschichte des Vertrags nachzuvollziehen." },
+      ],
+    },
+    {
+      id: "kalender",
+      icon: "📅",
+      title: "Kalender & Google",
+      items: [
+        { q: "Google Kalender verbinden", a: "Unter ⚙️-Tab im Vertrag-Detail → Google-Konto verbinden. Danach können Kündigungsfrist und Vertragsende als Kalendertermine synchronisiert werden." },
+        { q: "Kalenderübersicht", a: "Im Hauptmenü unter \"Kalender\" siehst du alle anstehenden Fristen monatsweise auf einen Blick." },
+      ],
+    },
+    {
+      id: "einstellungen",
+      icon: "⚙️",
+      title: "Einstellungen",
+      items: [
+        { q: "Kategorien anlegen & umbenennen", a: "Unter ⚙️ Einstellungen → linke Spalte. Wähle ein Emoji als Icon und gib einen Namen ein. Bestehende Kategorien können per ✏️ umbenannt werden." },
+        { q: "Zahlungskonten verwalten", a: "Unter ⚙️ Einstellungen → rechte Spalte. Konten (Girokonto, PayPal, VISA …) können mit optionaler IBAN/Kennung angelegt und dann beim Vertrag ausgewählt werden." },
+      ],
+    },
+  ];
+
+  return (
+    <div>
+      <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-1" style={{ color: "#F8FAFC" }}>Hilfe & Dokumentation</h1>
+      <p className="text-sm mb-6" style={{ color: "#64748B" }}>Anleitung und häufige Fragen zum VertragsPilot</p>
+
+      {/* Schnellübersicht */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-6">
+        {sections.map(s => (
+          <button
+            key={s.id}
+            onClick={() => setOpen(open === s.id ? null : s.id)}
+            className="flex flex-col items-center gap-1.5 rounded-xl p-3 text-center transition-colors"
+            style={{
+              background: open === s.id ? "linear-gradient(135deg,rgba(29,78,216,0.3),rgba(124,58,237,0.3))" : "#1E293B",
+              border: `1px solid ${open === s.id ? "rgba(59,130,246,0.5)" : "#334155"}`,
+            }}
+          >
+            <span className="text-2xl">{s.icon}</span>
+            <span className="text-[11px] font-semibold leading-tight" style={{ color: open === s.id ? "#93C5FD" : "#CBD5E1" }}>{s.title}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* FAQ-Bereich */}
+      <div className="flex flex-col gap-3">
+        {sections.filter(s => open === null || s.id === open).map(s => (
+          <Card key={s.id}>
+            <div
+              className="flex items-center gap-2 cursor-pointer mb-0"
+              onClick={() => setOpen(open === s.id ? null : s.id)}
+            >
+              <span className="text-xl">{s.icon}</span>
+              <h2 className="text-sm font-bold flex-1" style={{ color: "#F8FAFC" }}>{s.title}</h2>
+              <span className="text-xs" style={{ color: "#64748B" }}>{open === s.id ? "▲" : "▼"}</span>
+            </div>
+            {(open === null || open === s.id) && (
+              <div className="flex flex-col gap-1 mt-4">
+                {s.items.map((item, i) => (
+                  <details key={i} className="group rounded-lg overflow-hidden" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                    <summary
+                      className="flex items-center justify-between px-4 py-3 cursor-pointer text-sm font-semibold list-none"
+                      style={{ color: "#E2E8F0" }}
+                    >
+                      <span>{item.q}</span>
+                      <span className="text-xs shrink-0 ml-2" style={{ color: "#64748B" }}>▸</span>
+                    </summary>
+                    <div className="px-4 py-3 text-sm leading-relaxed whitespace-pre-line" style={{ color: "#94A3B8", borderTop: "1px solid #1E293B" }}>
+                      {item.a}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            )}
+          </Card>
+        ))}
+      </div>
+
+      <Card className="mt-6">
+        <p className="text-xs leading-relaxed" style={{ color: "#475569" }}>
+          <strong style={{ color: "#64748B" }}>VertragsPilot</strong> — Alle Daten werden sicher in einer PostgreSQL-Datenbank (Neon) gespeichert. Dokumente liegen verschlüsselt im Vercel Blob-Speicher. Es werden keine Daten an Dritte weitergegeben.
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 // ─── Einstellungen ───────────────────────────────────
 
 function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
@@ -2348,7 +2492,7 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
   const navigate = useCallback((target, contract = null) => {
     setPage(target);
     setSidebarOpen(false);
-    if (contract) setSelectedContract(contract);
+    setSelectedContract(contract);
   }, []);
 
   const handleDelete = useCallback((id) => {
@@ -2382,6 +2526,7 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
     { id: "kosten", icon: "💸", label: "Kosten-Übersicht" },
     { id: "calendar", icon: "📅", label: "Kalender" },
     { id: "einstellungen", icon: "⚙️", label: "Einstellungen" },
+    { id: "hilfe", icon: "❓", label: "Hilfe" },
   ];
 
   return (
@@ -2496,6 +2641,7 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
         {page === "kosten" && <KostenUebersicht contracts={contracts} />}
         {page === "calendar" && <CalendarView contracts={contracts} />}
         {page === "einstellungen" && <Einstellungen kategorien={kategorien} setKategorien={setKategorien} konten={konten} setKonten={setKonten} />}
+        {page === "hilfe" && <Hilfe />}
       </main>
     </div>
   );
