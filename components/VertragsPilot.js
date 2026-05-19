@@ -221,6 +221,95 @@ function InputField({ label, value, onChange, type = "text", ...props }) {
   );
 }
 
+// ─── Notizen-Checkliste ──────────────────────────────
+
+function NotizenChecklist() {
+  const [items, setItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("vp_checklist") || "[]"); } catch { return []; }
+  });
+  const [input, setInput] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("vp_checklist", JSON.stringify(items));
+  }, [items]);
+
+  const add = () => {
+    const text = input.trim();
+    if (!text) return;
+    setItems(prev => [...prev, { id: Date.now(), text, done: false }]);
+    setInput("");
+  };
+
+  const toggle = (id) => setItems(prev => prev.map(i => i.id === id ? { ...i, done: !i.done } : i));
+  const remove = (id) => setItems(prev => prev.filter(i => i.id !== id));
+  const clearDone = () => setItems(prev => prev.filter(i => !i.done));
+
+  const doneCount = items.filter(i => i.done).length;
+
+  return (
+    <Card className="flex flex-col">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-[15px] font-bold" style={{ color: "#F8FAFC" }}>📝 Notizen & Aufgaben</h3>
+        {doneCount > 0 && (
+          <button onClick={clearDone} className="text-[11px] font-semibold" style={{ color: "#475569" }}>
+            {doneCount} erledigt löschen
+          </button>
+        )}
+      </div>
+      <div className="flex gap-2 mb-3">
+        <input
+          className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+          style={{ background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" }}
+          placeholder="Neue Aufgabe… (Enter)"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && add()}
+        />
+        <button
+          onClick={add}
+          className="shrink-0 rounded-lg px-3 py-2 text-sm font-bold text-white"
+          style={{ background: "linear-gradient(135deg,#1D4ED8,#7C3AED)" }}
+        >+</button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-center py-6" style={{ color: "#475569" }}>Noch keine Einträge</p>
+      ) : (
+        <div className="flex flex-col gap-1.5 overflow-y-auto" style={{ maxHeight: 260 }}>
+          {items.map(item => (
+            <div
+              key={item.id}
+              className="flex items-center gap-2.5 rounded-lg px-3 py-2 group"
+              style={{ background: "#0F172A", border: "1px solid #1E293B" }}
+            >
+              <button
+                onClick={() => toggle(item.id)}
+                className="shrink-0 w-4 h-4 rounded flex items-center justify-center"
+                style={{
+                  border: `1.5px solid ${item.done ? "#3B82F6" : "#475569"}`,
+                  background: item.done ? "#1D4ED8" : "transparent",
+                }}
+              >
+                {item.done && <span className="text-[9px] text-white font-black leading-none">✓</span>}
+              </button>
+              <span
+                className="flex-1 text-sm leading-snug"
+                style={{ color: item.done ? "#475569" : "#CBD5E1", textDecoration: item.done ? "line-through" : "none" }}
+              >
+                {item.text}
+              </span>
+              <button
+                onClick={() => remove(item.id)}
+                className="text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                style={{ color: "#475569" }}
+              >✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ─── Dashboard ───────────────────────────────────────
 
 function Dashboard({ contracts, navigate }) {
@@ -290,7 +379,7 @@ function Dashboard({ contracts, navigate }) {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-4 mb-4 md:mb-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4 mb-4 md:mb-6">
         <Card>
           <h3 className="text-sm md:text-[15px] font-bold mb-3 md:mb-4" style={{ color: "#F8FAFC" }}>⏰ Kündigungsfristen</h3>
           {urgentContracts.length === 0 ? (
@@ -331,9 +420,11 @@ function Dashboard({ contracts, navigate }) {
         </Card>
 
         <Card>
-          <h3 className="text-[15px] font-bold mb-4" style={{ color: "#F8FAFC" }}>💸 Kosten nach Kategorie</h3>
-          <BarChart data={catCosts.slice(0, 8)} total={totalMonthly} />
+          <h3 className="text-[15px] font-bold mb-3" style={{ color: "#F8FAFC" }}>💸 Kosten nach Kategorie</h3>
+          <BarChart data={catCosts.slice(0, 5)} total={totalMonthly} />
         </Card>
+
+        <NotizenChecklist />
       </div>
 
       {zuPruefenContracts.length > 0 && (

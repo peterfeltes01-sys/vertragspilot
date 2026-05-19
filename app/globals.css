@@ -46,6 +46,13 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
+/* Light calendar/spinner controls on dark backgrounds */
+input[type="date"],
+input[type="number"],
+input[type="time"] {
+  color-scheme: dark;
+}
+
 /* Reminder modal animations */
 @keyframes reminder-fade-in {
   from { opacity: 0; }
