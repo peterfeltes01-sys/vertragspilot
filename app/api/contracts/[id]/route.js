@@ -13,7 +13,7 @@ function prepareDates(data) {
   }
   if (data.kosten === "" || data.kosten === undefined) data.kosten = null;
   else if (data.kosten != null) data.kosten = parseFloat(data.kosten);
-  const intFields = ["laufzeitMonate", "kuendigungsfristMonate", "verlaengerungMonate"];
+  const intFields = ["laufzeitMonate", "kuendigungsfristMonate", "verlaengerungMonate", "kontoId"];
   for (const field of intFields) {
     if (data[field] === "" || data[field] === undefined || data[field] === null) data[field] = null;
     else data[field] = parseInt(data[field]);

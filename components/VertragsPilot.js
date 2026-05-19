@@ -47,15 +47,18 @@ function Badge({ bg, color, children }) {
   );
 }
 
-function StatusBadge({ berechneterStatus, tage }) {
+function StatusBadge({ berechneterStatus, tage, reminderEnabled = true }) {
   if (berechneterStatus === "gekuendigt")
     return <Badge bg="rgba(71,85,105,0.2)" color="#94A3B8">⚫ Gekündigt</Badge>;
   if (berechneterStatus === "ausgelaufen")
     return <Badge bg="rgba(71,85,105,0.15)" color="#64748B">⚫ Ausgelaufen</Badge>;
-  if (berechneterStatus === "kuendigungsfrist_laeuft")
+  if (berechneterStatus === "kuendigungsfrist_laeuft") {
+    if (!reminderEnabled && tage !== null && tage < 0)
+      return <Badge bg="rgba(16,185,129,0.15)" color="#34D399">🟢 Aktiv</Badge>;
     return tage !== null && tage < 0
       ? <Badge bg="rgba(220,38,38,0.2)" color="#F87171">🔴 Frist verpasst!</Badge>
       : <Badge bg="rgba(220,38,38,0.15)" color="#F87171">🔴 Frist läuft!</Badge>;
+  }
   if (tage == null)
     return <Badge bg="rgba(16,185,129,0.15)" color="#34D399">🟢 Aktiv</Badge>;
   if (tage < 0)
@@ -116,6 +119,66 @@ function BarChart({ data, total }) {
         );
       })}
     </div>
+  );
+}
+
+function KostenLineChart({ months }) {
+  if (!months || months.length < 2) return null;
+
+  const W = 480, H = 84;
+  const PL = 4, PR = 4, PT = 6, PB = 20;
+  const CW = W - PL - PR, CH = H - PT - PB;
+
+  const values = months.map(m => m.total);
+  const minV = Math.min(...values);
+  const maxV = Math.max(...values);
+  const isFlat = maxV === minV;
+  const range = isFlat ? 1 : maxV - minV;
+
+  const px = (i) => PL + (i / (months.length - 1)) * CW;
+  const py = (v) => isFlat ? PT + CH / 2 : PT + CH - ((v - minV) / range) * CH;
+
+  const pts = months.map((m, i) => ({ x: px(i), y: py(m.total), label: m.label, total: m.total }));
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const area = `${line} L${pts[pts.length-1].x.toFixed(1)},${(H-PB).toFixed(1)} L${pts[0].x.toFixed(1)},${(H-PB).toFixed(1)} Z`;
+
+  const first = values[0], last = values[values.length - 1];
+  const diff = first > 0.1 ? ((last - first) / first * 100) : 0;
+  const trendColor = diff > 3 ? "#F87171" : diff < -3 ? "#34D399" : "#64748B";
+  const trendLabel = Math.abs(diff) < 1 ? "→ stabil" : diff > 0 ? `↑ +${diff.toFixed(0)}%` : `↓ ${diff.toFixed(0)}%`;
+  const avg = values.reduce((s, v) => s + v, 0) / values.length;
+
+  return (
+    <>
+      <div className="flex justify-between text-xs mb-2">
+        <span style={{ color: "#64748B" }}>{formatCurrency(first)}/Mo → {formatCurrency(last)}/Mo · Ø {formatCurrency(avg)}/Mo</span>
+        <span style={{ color: trendColor, fontWeight: 700 }}>{trendLabel}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full">
+        <defs>
+          <linearGradient id="cg" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#3B82F6" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {[0, 0.5, 1].map(t => (
+          <line key={t} x1={PL} y1={PT + t * CH} x2={W - PR} y2={PT + t * CH} stroke="#334155" strokeWidth="0.5" />
+        ))}
+        <path d={area} fill="url(#cg)" />
+        <path d={line} fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r={i === pts.length - 1 ? 4 : 3}
+            fill={i === pts.length - 1 ? "#60A5FA" : "#3B82F6"} stroke="#0F172A" strokeWidth="1.5">
+            <title>{`${p.label}: ${formatCurrency(p.total)}/Mo`}</title>
+          </circle>
+        ))}
+        {pts.map((p, i) => (
+          (i % 2 === 0 || i === pts.length - 1) ? (
+            <text key={i} x={p.x} y={H - 1} textAnchor="middle" fontSize="9" fill="#475569">{p.label}</text>
+          ) : null
+        ))}
+      </svg>
+    </>
   );
 }
 
@@ -255,7 +318,7 @@ function Dashboard({ contracts, navigate }) {
                       {w.berechnetsVertragsende && ` · Ende: ${formatDate(w.berechnetsVertragsende)}`}
                     </div>
                   </div>
-                  <StatusBadge berechneterStatus={w.berechneterStatus} tage={w.days} />
+                  <StatusBadge berechneterStatus={w.berechneterStatus} tage={w.days} reminderEnabled={w.reminderEnabled} />
                 </div>
               ))}
               {urgentContracts.length > 6 && (
@@ -376,6 +439,9 @@ function ContractList({ contracts, navigate, onDelete }) {
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("all");
   const [filterInterval, setFilterInterval] = useState("all");
+  const [filterMinKosten, setFilterMinKosten] = useState("");
+  const [filterMaxKosten, setFilterMaxKosten] = useState("");
+  const [filterDeadlineDays, setFilterDeadlineDays] = useState("all");
   const [sortBy, setSortBy] = useState("kategorie");
   const [sortDir, setSortDir] = useState("asc");
 
@@ -389,6 +455,23 @@ function ContractList({ contracts, navigate, onDelete }) {
     }
     if (filterCat !== "all") list = list.filter(c => c.kategorie === filterCat);
     if (filterInterval !== "all") list = list.filter(c => c.zahlungsintervall === filterInterval);
+    if (filterMinKosten !== "") {
+      const min = parseFloat(filterMinKosten);
+      if (!isNaN(min)) list = list.filter(c => toMonthly(c.kosten, c.zahlungsintervall) >= min);
+    }
+    if (filterMaxKosten !== "") {
+      const max = parseFloat(filterMaxKosten);
+      if (!isNaN(max)) list = list.filter(c => toMonthly(c.kosten, c.zahlungsintervall) <= max);
+    }
+    if (filterDeadlineDays === "none") {
+      list = list.filter(c => !c.naechsteKuendigung);
+    } else if (filterDeadlineDays !== "all") {
+      const days = parseInt(filterDeadlineDays);
+      list = list.filter(c => {
+        const tage = c.tagesBisKuendigungsfrist;
+        return tage !== null && tage >= 0 && tage <= days;
+      });
+    }
     list.sort((a, b) => {
       let va, vb;
       if (sortBy === "kosten") { va = toMonthly(a.kosten, a.zahlungsintervall); vb = toMonthly(b.kosten, b.zahlungsintervall); }
@@ -404,7 +487,7 @@ function ContractList({ contracts, navigate, onDelete }) {
       return sortDir === "asc" ? (va < vb ? -1 : 1) : (va > vb ? -1 : 1);
     });
     return list;
-  }, [contracts, search, filterCat, filterInterval, sortBy, sortDir]);
+  }, [contracts, search, filterCat, filterInterval, filterMinKosten, filterMaxKosten, filterDeadlineDays, sortBy, sortDir]);
 
   const toggleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -465,6 +548,32 @@ function ContractList({ contracts, navigate, onDelete }) {
             ⏰
           </button>
         </div>
+        <div className="flex gap-2">
+          <input
+            type="number" min="0" step="0.01" placeholder="Min €/Mo"
+            className="flex-1 min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" }}
+            value={filterMinKosten} onChange={e => setFilterMinKosten(e.target.value)}
+          />
+          <input
+            type="number" min="0" step="0.01" placeholder="Max €/Mo"
+            className="flex-1 min-w-0 rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" }}
+            value={filterMaxKosten} onChange={e => setFilterMaxKosten(e.target.value)}
+          />
+          <select
+            className="flex-1 rounded-lg px-3 py-2 text-sm outline-none cursor-pointer min-w-0"
+            style={{ background: "#0F172A", border: "1px solid #334155", color: filterDeadlineDays !== "all" ? "#F87171" : "#E2E8F0" }}
+            value={filterDeadlineDays} onChange={e => setFilterDeadlineDays(e.target.value)}
+          >
+            <option value="all">Alle Fristen</option>
+            <option value="14">Fällig in 14 Tagen</option>
+            <option value="30">Fällig in 30 Tagen</option>
+            <option value="60">Fällig in 60 Tagen</option>
+            <option value="90">Fällig in 90 Tagen</option>
+            <option value="none">Ohne Frist</option>
+          </select>
+        </div>
       </div>
 
       {/* ── Mobile: Kartenliste ── */}
@@ -507,7 +616,7 @@ function ContractList({ contracts, navigate, onDelete }) {
                   </span>
                 </div>
               </div>
-              <StatusBadge berechneterStatus={c.berechneterStatus} tage={tage} />
+              <StatusBadge berechneterStatus={c.berechneterStatus} tage={tage} reminderEnabled={c.reminderEnabled} />
             </div>
           );
         })}
@@ -563,7 +672,7 @@ function ContractList({ contracts, navigate, onDelete }) {
                     </span>
                   </td>
                   <td className="p-3 border-b" style={{ borderColor: "#1E293B15" }}>
-                    <StatusBadge berechneterStatus={c.berechneterStatus} tage={c.tagesBisKuendigungsfrist} />
+                    <StatusBadge berechneterStatus={c.berechneterStatus} tage={c.tagesBisKuendigungsfrist} reminderEnabled={c.reminderEnabled} />
                   </td>
                 </tr>
               ))}
@@ -593,6 +702,11 @@ function TabDocuments({ contractId }) {
   const handleUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      alert("Dateien über 4 MB werden derzeit nicht unterstützt. Bitte eine kleinere Datei wählen.");
+      e.target.value = "";
+      return;
+    }
     setUploading(true);
     setUploadProgress(30);
     const fd = new FormData();
@@ -609,8 +723,11 @@ function TabDocuments({ contractId }) {
         setDocs(d => [doc, ...(d || [])]);
         setForm({ bezeichnung: "", kategorie: "sonstiges" });
       } else {
-        const err = await res.json();
-        alert(err.error || "Upload fehlgeschlagen");
+        const text = await res.text();
+        let msg = "Upload fehlgeschlagen";
+        try { msg = JSON.parse(text).error || msg; } catch { msg = text.slice(0, 120) || msg; }
+        if (res.status === 413) msg = "Datei zu groß – maximal 4 MB erlaubt.";
+        alert(msg);
       }
     } catch (err) {
       alert("Upload fehlgeschlagen: " + err.message);
@@ -674,7 +791,7 @@ function TabDocuments({ contractId }) {
           {uploading ? "⏳ Hochladen…" : "📤 Datei auswählen"}
           <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png,.webp" onChange={handleUpload} disabled={uploading} />
         </label>
-        <p className="text-[11px] mt-2" style={{ color: "#475569" }}>PDF, JPEG, PNG oder WEBP · max. 10 MB</p>
+        <p className="text-[11px] mt-2" style={{ color: "#475569" }}>PDF, JPEG, PNG oder WEBP · max. 4 MB</p>
       </Card>
 
       {docs === null ? (
@@ -696,8 +813,8 @@ function TabDocuments({ contractId }) {
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">
-                <a href={doc.dateipfad} target="_blank" rel="noopener noreferrer" className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60A5FA" }}>Öffnen</a>
-                <a href={doc.dateipfad} download={doc.dateiname} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(16,185,129,0.15)", color: "#34D399" }}>↓</a>
+                <a href={`/api/documents/${doc.id}/download?inline=true`} target="_blank" rel="noopener noreferrer" className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60A5FA" }}>Öffnen</a>
+                <a href={`/api/documents/${doc.id}/download`} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(16,185,129,0.15)", color: "#34D399" }}>↓</a>
                 <button onClick={() => handleDelete(doc.id)} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(220,38,38,0.15)", color: "#F87171" }}>✕</button>
               </div>
             </div>
@@ -1329,17 +1446,29 @@ function TabCalendar({ contract }) {
 
 // ─── Contract Detail ─────────────────────────────────
 
-function ContractDetail({ contract, navigate, onDelete }) {
+function ContractDetail({ contract, konten = [], navigate, onDelete }) {
   if (!contract) return null;
+  const kontoName = contract.kontoId ? (konten.find(k => k.id === contract.kontoId)?.bezeichnung ?? null) : null;
   const monthly = toMonthly(contract.kosten, contract.zahlungsintervall);
   const yearly = monthly * 12;
   const tage = contract.tagesBisKuendigungsfrist ?? getDaysUntil(contract.naechsteKuendigung);
   const [activeTab, setActiveTab] = useState("uebersicht");
+  const [reminderEnabled, setReminderEnabled] = useState(contract.reminderEnabled ?? true);
 
   const handleDelete = async () => {
     if (!confirm("Vertrag wirklich löschen?")) return;
     const res = await fetch(`/api/contracts/${contract.id}`, { method: "DELETE" });
     if (res.ok) onDelete(contract.id);
+  };
+
+  const handleToggleReminder = async () => {
+    const newVal = !reminderEnabled;
+    setReminderEnabled(newVal);
+    await fetch(`/api/contracts/${contract.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reminderEnabled: newVal }),
+    });
   };
 
   const tabs = [
@@ -1363,11 +1492,11 @@ function ContractDetail({ contract, navigate, onDelete }) {
           <h1 className="text-lg md:text-2xl font-extrabold tracking-tight truncate" style={{ color: "#F8FAFC" }}>{contract.vertrag}</h1>
           <Badge bg={(CATEGORY_COLORS[contract.kategorie] || "#6366F1") + "20"} color={CATEGORY_COLORS[contract.kategorie] || "#6366F1"}>{contract.kategorie}</Badge>
         </div>
-        <StatusBadge berechneterStatus={contract.berechneterStatus} tage={tage} />
+        <StatusBadge berechneterStatus={contract.berechneterStatus} tage={tage} reminderEnabled={reminderEnabled} />
       </div>
 
       {/* Kündigungsfrist verpasst Banner */}
-      {contract.berechneterStatus === "kuendigungsfrist_laeuft" && tage !== null && tage < 0 && (
+      {contract.berechneterStatus === "kuendigungsfrist_laeuft" && tage !== null && tage < 0 && reminderEnabled && (
         <div className="rounded-xl p-4 mb-4 flex items-start gap-3" style={{ background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
           <span className="text-xl shrink-0">⚠️</span>
           <div>
@@ -1431,6 +1560,7 @@ function ContractDetail({ contract, navigate, onDelete }) {
           <Card>
             <h3 className="text-[15px] font-bold mb-4" style={{ color: "#F8FAFC" }}>Vertragsdetails</h3>
             {[
+              ["Vertragspartner", contract.vertragspartner],
               ["Kundennummer", contract.kundennummer],
               ["Vertragsbeginn", formatDate(contract.vertragsbeginn)],
               ["Berechnetes Vertragsende", formatDate(contract.berechnetsVertragsende || contract.vertragsende)],
@@ -1440,6 +1570,7 @@ function ContractDetail({ contract, navigate, onDelete }) {
               ["Status", contract.berechneterStatus === "gekuendigt" ? "Gekündigt" : contract.berechneterStatus === "ausgelaufen" ? "Ausgelaufen" : contract.berechneterStatus === "kuendigungsfrist_laeuft" ? "Kündigungsfrist läuft!" : "Aktiv"],
               ["Kündigung am", formatDate(contract.kuendigungsDatum)],
               ["Zahlungsintervall", contract.zahlungsintervall],
+              ["Zahlungskonto", kontoName],
               ["Kosten (Original)", contract.kosten != null ? `${formatCurrency(contract.kosten)} ${contract.zahlungsintervall || ""}` : null],
               ["Letzter Check", formatDate(contract.lastCheck)],
               ["Zu prüfen", contract.zuPruefen ? "Ja" : null],
@@ -1449,6 +1580,16 @@ function ContractDetail({ contract, navigate, onDelete }) {
                 <span className="text-sm font-medium text-right max-w-[60%] break-words" style={{ color: "#E2E8F0" }}>{val || "—"}</span>
               </div>
             ))}
+            <div className="flex justify-between items-center py-2">
+              <span className="text-sm" style={{ color: "#94A3B8" }}>Frist-Reminder</span>
+              <button
+                onClick={handleToggleReminder}
+                className="text-xs font-semibold rounded-md px-2.5 py-1"
+                style={{ background: reminderEnabled ? "rgba(16,185,129,0.15)" : "rgba(71,85,105,0.2)", color: reminderEnabled ? "#34D399" : "#94A3B8" }}
+              >
+                {reminderEnabled ? "🔔 Aktiv" : "🔕 Deaktiviert"}
+              </button>
+            </div>
           </Card>
           <Card>
             <h3 className="text-[15px] font-bold mb-4" style={{ color: "#F8FAFC" }}>Links & Notizen</h3>
@@ -1481,15 +1622,19 @@ function ContractDetail({ contract, navigate, onDelete }) {
 
 // ─── Contract Form ───────────────────────────────────
 
-function ContractForm({ contract, kategorien, navigate, onSave }) {
+function ContractForm({ contract, kategorien, konten = [], onKontoAdded, navigate, onSave }) {
   const isEdit = !!contract;
   const toDateInput = (d) => d ? new Date(d).toISOString().split("T")[0] : "";
+
+  const [newKonto, setNewKonto] = useState({ show: false, bezeichnung: "", iban: "" });
 
   const [form, setForm] = useState({
     kategorie: contract?.kategorie || "",
     vertrag: contract?.vertrag || "",
+    vertragspartner: contract?.vertragspartner || "",
     web: contract?.web || "",
     kundennummer: contract?.kundennummer || "",
+    kontoId: contract?.kontoId ?? "",
     vertragsbeginn: toDateInput(contract?.vertragsbeginn),
     vertragsende: toDateInput(contract?.vertragsende),
     laufzeit: contract?.laufzeit || "",
@@ -1553,6 +1698,9 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
           <div className="sm:col-span-2">
             <InputField label="Vertragsname *" value={form.vertrag} onChange={v => update("vertrag", v)} />
           </div>
+          <div className="sm:col-span-2">
+            <InputField label="Vertragspartner" value={form.vertragspartner} onChange={v => update("vertragspartner", v)} placeholder="z.B. Telekom, Stadtwerke München" />
+          </div>
           <div>
             <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Kategorie *</label>
             <select className="w-full rounded-lg px-3.5 py-2.5 text-sm outline-none cursor-pointer" style={{ background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" }} value={form.kategorie} onChange={e => update("kategorie", e.target.value)}>
@@ -1571,6 +1719,69 @@ function ContractForm({ contract, kategorien, navigate, onSave }) {
           </div>
           <InputField label="Kosten" value={form.kosten} onChange={v => update("kosten", v)} type="number" step="0.01" />
           <InputField label="Kundennummer" value={form.kundennummer} onChange={v => update("kundennummer", v)} />
+          <div className="sm:col-span-2">
+            <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Zahlungskonto</label>
+            <div className="flex gap-2">
+              <select
+                className="flex-1 rounded-lg px-3.5 py-2.5 text-sm outline-none cursor-pointer"
+                style={{ background: "#0F172A", border: "1px solid #334155", color: form.kontoId ? "#E2E8F0" : "#64748B" }}
+                value={form.kontoId}
+                onChange={e => update("kontoId", e.target.value)}
+              >
+                <option value="">— Kein Konto —</option>
+                {konten.map(k => (
+                  <option key={k.id} value={k.id}>{k.bezeichnung}{k.iban ? ` (${k.iban})` : ""}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setNewKonto(s => ({ ...s, show: !s.show }))}
+                className="shrink-0 rounded-lg px-3 py-2 text-sm font-semibold"
+                style={{ background: "#1E293B", border: "1px solid #334155", color: "#94A3B8" }}
+              >
+                {newKonto.show ? "✕" : "+ Konto"}
+              </button>
+            </div>
+            {newKonto.show && (
+              <div className="mt-2 p-3 rounded-lg flex flex-col gap-2" style={{ background: "#0F172A", border: "1px solid #334155" }}>
+                <input
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: "#1E293B", border: "1px solid #334155", color: "#E2E8F0" }}
+                  placeholder="Name *  z.B. Girokonto DKB, PayPal"
+                  value={newKonto.bezeichnung}
+                  onChange={e => setNewKonto(s => ({ ...s, bezeichnung: e.target.value }))}
+                />
+                <input
+                  className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                  style={{ background: "#1E293B", border: "1px solid #334155", color: "#E2E8F0" }}
+                  placeholder="IBAN / PayPal / VISA / Google Pay … (optional)"
+                  value={newKonto.iban}
+                  onChange={e => setNewKonto(s => ({ ...s, iban: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="self-start rounded-lg px-3 py-1.5 text-sm font-semibold text-white"
+                  style={{ background: "linear-gradient(135deg,#1D4ED8,#7C3AED)" }}
+                  onClick={async () => {
+                    if (!newKonto.bezeichnung.trim()) return;
+                    const res = await fetch("/api/konten", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ bezeichnung: newKonto.bezeichnung, iban: newKonto.iban }),
+                    });
+                    if (res.ok) {
+                      const k = await res.json();
+                      onKontoAdded?.(k);
+                      update("kontoId", k.id);
+                      setNewKonto({ show: false, bezeichnung: "", iban: "" });
+                    }
+                  }}
+                >
+                  Konto speichern
+                </button>
+              </div>
+            )}
+          </div>
           <div className="sm:col-span-2">
             <InputField label="Website / Email" value={form.web} onChange={v => update("web", v)} />
           </div>
@@ -1646,6 +1857,14 @@ function KostenUebersicht({ contracts }) {
 
   const totalMonthly = aktiv.reduce((s, c) => s + toMonthly(c.kosten, c.zahlungsintervall), 0);
 
+  const [costHistory, setCostHistory] = useState(null);
+  useEffect(() => {
+    fetch("/api/analytics/cost-history")
+      .then(r => r.ok ? r.json() : { months: [] })
+      .then(d => setCostHistory(d.months))
+      .catch(() => setCostHistory([]));
+  }, []);
+
   const catData = useMemo(() => {
     const map = {};
     aktiv.forEach(c => {
@@ -1697,6 +1916,15 @@ function KostenUebersicht({ contracts }) {
           })}
         </Card>
       </div>
+
+      <Card className="mb-4">
+        <h3 className="text-[15px] font-bold mb-1" style={{ color: "#F8FAFC" }}>📈 Kostenentwicklung (12 Monate)</h3>
+        {costHistory === null ? (
+          <p className="text-xs py-4 text-center" style={{ color: "#64748B" }}>Lade…</p>
+        ) : (
+          <KostenLineChart months={costHistory} />
+        )}
+      </Card>
 
       <Card>
         <h3 className="text-[15px] font-bold mb-4" style={{ color: "#F8FAFC" }}>Nach Zahlungsintervall</h3>
@@ -1772,7 +2000,7 @@ function Warnings({ contracts, navigate }) {
                       {w.kosten != null && ` · ${formatCurrency(toMonthly(w.kosten, w.zahlungsintervall))}/Mo`}
                     </div>
                   </div>
-                  <StatusBadge berechneterStatus={w.berechneterStatus} tage={w.days} />
+                  <StatusBadge berechneterStatus={w.berechneterStatus} tage={w.days} reminderEnabled={w.reminderEnabled} />
                 </div>
               ))}
             </div>
@@ -1835,10 +2063,278 @@ function CalendarView({ contracts }) {
   );
 }
 
+// ─── Einstellungen ───────────────────────────────────
+
+function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
+  const [katForm, setKatForm] = useState({ name: "", icon: "📄" });
+  const [editKat, setEditKat] = useState(null);
+  const [kontoForm, setKontoForm] = useState({ bezeichnung: "", iban: "" });
+  const [editKonto, setEditKonto] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  const ICON_SUGGESTIONS = ["📄","💡","🚗","🏠","📱","💳","🎵","🎮","🏋️","🌍","💼","🐾","🍕","✈️","🔧","🎓","🏥","⚡"];
+
+  const saveKat = async () => {
+    if (!katForm.name.trim()) return;
+    setSaving(true);
+    if (editKat) {
+      const res = await fetch(`/api/kategorien/${editKat.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(katForm),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setKategorien(ks => ks.map(k => k.id === updated.id ? updated : k));
+        setEditKat(null);
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    } else {
+      const res = await fetch("/api/kategorien", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(katForm),
+      });
+      if (res.ok) {
+        const neu = await res.json();
+        setKategorien(ks => [...ks, neu].sort((a, b) => a.name.localeCompare(b.name)));
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    }
+    setKatForm({ name: "", icon: "📄" });
+    setSaving(false);
+  };
+
+  const deleteKat = async (id) => {
+    if (!confirm("Kategorie löschen? Bestehende Verträge behalten die Bezeichnung.")) return;
+    const res = await fetch(`/api/kategorien/${id}`, { method: "DELETE" });
+    if (res.ok) setKategorien(ks => ks.filter(k => k.id !== id));
+  };
+
+  const saveKonto = async () => {
+    if (!kontoForm.bezeichnung.trim()) return;
+    setSaving(true);
+    if (editKonto) {
+      const res = await fetch(`/api/konten/${editKonto.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kontoForm),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setKonten(ks => ks.map(k => k.id === updated.id ? updated : k));
+        setEditKonto(null);
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    } else {
+      const res = await fetch("/api/konten", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kontoForm),
+      });
+      if (res.ok) {
+        const neu = await res.json();
+        setKonten(ks => [...ks, neu].sort((a, b) => a.bezeichnung.localeCompare(b.bezeichnung)));
+      } else {
+        const err = await res.json();
+        alert(err.error);
+      }
+    }
+    setKontoForm({ bezeichnung: "", iban: "" });
+    setSaving(false);
+  };
+
+  const deleteKonto = async (id) => {
+    if (!confirm("Konto löschen?")) return;
+    const res = await fetch(`/api/konten/${id}`, { method: "DELETE" });
+    if (res.ok) setKonten(ks => ks.filter(k => k.id !== id));
+  };
+
+  const inputStyle = { background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" };
+
+  return (
+    <div>
+      <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-1" style={{ color: "#F8FAFC" }}>Einstellungen</h1>
+      <p className="text-sm mb-6" style={{ color: "#64748B" }}>Kategorien und Konten verwalten</p>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Kategorien */}
+        <div>
+          <Card className="mb-4">
+            <h2 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>
+              {editKat ? `✏️ Kategorie bearbeiten: ${editKat.name}` : "➕ Neue Kategorie"}
+            </h2>
+            <div className="flex gap-2 mb-3">
+              <div className="w-16">
+                <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Icon</label>
+                <input
+                  className="w-full rounded-lg px-2 py-2.5 text-center text-lg outline-none"
+                  style={inputStyle}
+                  value={editKat ? editKat.icon : katForm.icon}
+                  onChange={e => editKat
+                    ? setEditKat(k => ({ ...k, icon: e.target.value }))
+                    : setKatForm(f => ({ ...f, icon: e.target.value }))
+                  }
+                  maxLength={4}
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Name *</label>
+                <input
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                  placeholder="z.B. Sport & Fitness"
+                  value={editKat ? editKat.name : katForm.name}
+                  onChange={e => editKat
+                    ? setEditKat(k => ({ ...k, name: e.target.value }))
+                    : setKatForm(f => ({ ...f, name: e.target.value }))
+                  }
+                  onKeyDown={e => e.key === "Enter" && saveKat()}
+                />
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {ICON_SUGGESTIONS.map(ico => (
+                <button
+                  key={ico}
+                  type="button"
+                  className="text-lg rounded-md px-1.5 py-0.5 transition-colors"
+                  style={{ background: (editKat ? editKat.icon : katForm.icon) === ico ? "rgba(59,130,246,0.3)" : "#0F172A", border: "1px solid #334155" }}
+                  onClick={() => editKat
+                    ? setEditKat(k => ({ ...k, icon: ico }))
+                    : setKatForm(f => ({ ...f, icon: ico }))
+                  }
+                >{ico}</button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={saveKat}
+                disabled={saving}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg,#1D4ED8,#7C3AED)" }}
+              >
+                {saving ? "Speichern…" : editKat ? "💾 Umbenennen" : "➕ Anlegen"}
+              </button>
+              {editKat && (
+                <button
+                  onClick={() => { setEditKat(null); setKatForm({ name: "", icon: "📄" }); }}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold"
+                  style={{ background: "#475569", color: "#F8FAFC" }}
+                >
+                  Abbrechen
+                </button>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-bold mb-3" style={{ color: "#F8FAFC" }}>Kategorien ({kategorien.length})</h2>
+            <div className="flex flex-col gap-1.5">
+              {kategorien.map(kat => (
+                <div key={kat.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                  <span className="text-base w-6 shrink-0">{kat.icon}</span>
+                  <span className="flex-1 text-sm" style={{ color: "#E2E8F0" }}>{kat.name}</span>
+                  <button onClick={() => { setEditKat({ ...kat }); }} className="text-[11px] px-2 py-0.5 rounded" style={{ color: "#94A3B8", background: "#1E293B" }}>✏️</button>
+                  <button onClick={() => deleteKat(kat.id)} className="text-[11px] px-2 py-0.5 rounded" style={{ color: "#F87171", background: "#1E293B" }}>✕</button>
+                </div>
+              ))}
+              {kategorien.length === 0 && <p className="text-sm py-4 text-center" style={{ color: "#64748B" }}>Noch keine Kategorien</p>}
+            </div>
+          </Card>
+        </div>
+
+        {/* Konten */}
+        <div>
+          <Card className="mb-4">
+            <h2 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>
+              {editKonto ? `✏️ Konto bearbeiten: ${editKonto.bezeichnung}` : "➕ Neues Konto"}
+            </h2>
+            <div className="flex flex-col gap-3 mb-3">
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>Bezeichnung *</label>
+                <input
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                  placeholder="z.B. Girokonto DKB, PayPal"
+                  value={editKonto ? editKonto.bezeichnung : kontoForm.bezeichnung}
+                  onChange={e => editKonto
+                    ? setEditKonto(k => ({ ...k, bezeichnung: e.target.value }))
+                    : setKontoForm(f => ({ ...f, bezeichnung: e.target.value }))
+                  }
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#94A3B8" }}>IBAN / PayPal / VISA … (optional)</label>
+                <input
+                  className="w-full rounded-lg px-3 py-2.5 text-sm outline-none"
+                  style={inputStyle}
+                  placeholder="z.B. DE12 3456 …, paypal@beispiel.de"
+                  value={editKonto ? editKonto.iban ?? "" : kontoForm.iban}
+                  onChange={e => editKonto
+                    ? setEditKonto(k => ({ ...k, iban: e.target.value }))
+                    : setKontoForm(f => ({ ...f, iban: e.target.value }))
+                  }
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={saveKonto}
+                disabled={saving}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                style={{ background: "linear-gradient(135deg,#1D4ED8,#7C3AED)" }}
+              >
+                {saving ? "Speichern…" : editKonto ? "💾 Speichern" : "➕ Anlegen"}
+              </button>
+              {editKonto && (
+                <button
+                  onClick={() => { setEditKonto(null); setKontoForm({ bezeichnung: "", iban: "" }); }}
+                  className="rounded-lg px-4 py-2 text-sm font-semibold"
+                  style={{ background: "#475569", color: "#F8FAFC" }}
+                >
+                  Abbrechen
+                </button>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <h2 className="text-sm font-bold mb-3" style={{ color: "#F8FAFC" }}>Konten ({konten.length})</h2>
+            <div className="flex flex-col gap-1.5">
+              {konten.map(k => (
+                <div key={k.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                  <span className="text-base shrink-0">💳</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm" style={{ color: "#E2E8F0" }}>{k.bezeichnung}</p>
+                    {k.iban && <p className="text-[11px]" style={{ color: "#64748B" }}>{k.iban}</p>}
+                  </div>
+                  <button onClick={() => setEditKonto({ ...k })} className="text-[11px] px-2 py-0.5 rounded shrink-0" style={{ color: "#94A3B8", background: "#1E293B" }}>✏️</button>
+                  <button onClick={() => deleteKonto(k.id)} className="text-[11px] px-2 py-0.5 rounded shrink-0" style={{ color: "#F87171", background: "#1E293B" }}>✕</button>
+                </div>
+              ))}
+              {konten.length === 0 && <p className="text-sm py-4 text-center" style={{ color: "#64748B" }}>Noch keine Konten</p>}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────
 
-export default function VertragsPilot({ initialContracts, kategorien }) {
+export default function VertragsPilot({ initialContracts, kategorien: initialKategorien, initialKonten = [] }) {
   const [contracts, setContracts] = useState(initialContracts);
+  const [kategorien, setKategorien] = useState(initialKategorien);
+  const [konten, setKonten] = useState(initialKonten);
   const [page, setPage] = useState("dashboard");
   const [selectedContract, setSelectedContract] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1881,10 +2377,11 @@ export default function VertragsPilot({ initialContracts, kategorien }) {
 
   const navItems = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
-    { id: "list", icon: "📋", label: "Verträge" },
+    { id: "list", icon: "📋", label: "Verträge / Periodische Zahlung" },
     { id: "warnings", icon: "⚠️", label: `Warnungen${warningCount > 0 ? ` (${warningCount})` : ""}` },
     { id: "kosten", icon: "💸", label: "Kosten-Übersicht" },
     { id: "calendar", icon: "📅", label: "Kalender" },
+    { id: "einstellungen", icon: "⚙️", label: "Einstellungen" },
   ];
 
   return (
@@ -1993,11 +2490,12 @@ export default function VertragsPilot({ initialContracts, kategorien }) {
       <main className="md:ml-[260px] pt-14 md:pt-0 p-4 md:p-6 lg:p-8 min-h-screen">
         {page === "dashboard" && <Dashboard contracts={contracts} navigate={navigate} />}
         {page === "list" && <ContractList contracts={contracts} navigate={navigate} onDelete={handleDelete} />}
-        {page === "detail" && <ContractDetail contract={selectedContract} navigate={navigate} onDelete={handleDelete} />}
-        {page === "form" && <ContractForm contract={selectedContract} kategorien={kategorien} navigate={navigate} onSave={handleSave} />}
+        {page === "detail" && <ContractDetail contract={selectedContract} konten={konten} navigate={navigate} onDelete={handleDelete} />}
+        {page === "form" && <ContractForm contract={selectedContract} kategorien={kategorien} konten={konten} onKontoAdded={k => setKonten(ks => [...ks, k].sort((a,b) => a.bezeichnung.localeCompare(b.bezeichnung)))} navigate={navigate} onSave={handleSave} />}
         {page === "warnings" && <Warnings contracts={contracts} navigate={navigate} />}
         {page === "kosten" && <KostenUebersicht contracts={contracts} />}
         {page === "calendar" && <CalendarView contracts={contracts} />}
+        {page === "einstellungen" && <Einstellungen kategorien={kategorien} setKategorien={setKategorien} konten={konten} setKonten={setKonten} />}
       </main>
     </div>
   );

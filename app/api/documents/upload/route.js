@@ -29,7 +29,7 @@ export async function POST(request) {
     }
 
     const blob = await put(`contracts/${contractId}/${Date.now()}-${file.name}`, file, {
-      access: "public",
+      access: "private",
     });
 
     const doc = await prisma.document.create({

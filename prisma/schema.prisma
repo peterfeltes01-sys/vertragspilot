@@ -7,13 +7,23 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Konto {
+  id          Int        @id @default(autoincrement())
+  bezeichnung String
+  iban        String?
+  vertraege   Contract[]
+}
+
 model Contract {
   id                   Int       @id @default(autoincrement())
   lastCheck            DateTime?
   kategorie            String
   vertrag              String
+  vertragspartner      String?
   web                  String?
   kundennummer         String?
+  kontoId              Int?
+  konto                Konto?    @relation(fields: [kontoId], references: [id])
   vertragsbeginn       DateTime?
   aktuellerBeginn      DateTime?
   vertragsende         DateTime?

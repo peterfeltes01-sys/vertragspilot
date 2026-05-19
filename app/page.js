@@ -10,13 +10,11 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const contracts = await prisma.contract.findMany({
-    where: { archiviert: false },
-    orderBy: { kategorie: "asc" },
-  });
-  const kategorien = await prisma.kategorie.findMany({
-    orderBy: { name: "asc" },
-  });
+  const [contracts, kategorien, konten] = await Promise.all([
+    prisma.contract.findMany({ where: { archiviert: false }, orderBy: { kategorie: "asc" } }),
+    prisma.kategorie.findMany({ orderBy: { name: "asc" } }),
+    prisma.konto.findMany({ orderBy: { bezeichnung: "asc" } }),
+  ]);
 
   const enriched = contracts.map((c) => {
     const berechnetsEnde = berechneAktuellesVertragsende(c);
@@ -36,6 +34,7 @@ export default async function Home() {
     <VertragsPilot
       initialContracts={JSON.parse(JSON.stringify(enriched))}
       kategorien={JSON.parse(JSON.stringify(kategorien))}
+      initialKonten={JSON.parse(JSON.stringify(konten))}
     />
   );
 }
