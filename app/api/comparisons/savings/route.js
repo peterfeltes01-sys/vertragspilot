@@ -11,7 +11,6 @@ function toMonthly(preis, intervall) {
 export async function GET() {
   const contracts = await prisma.contract.findMany({
     where: { archiviert: false, preisvergleiche: { some: {} } },
-    include: { preisvergleiche: true },
     select: {
       id: true, vertrag: true, kategorie: true, kosten: true, zahlungsintervall: true,
       preisvergleiche: true,
