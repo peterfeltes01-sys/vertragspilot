@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 export async function PUT(request, { params }) {
   try {
-    const id = parseInt(params.id);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
     const { name, icon, color } = await request.json();
     if (!name?.trim()) return NextResponse.json({ error: "Name erforderlich" }, { status: 400 });
 
@@ -31,7 +32,8 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    const id = parseInt(params.id);
+    const { id: idStr } = await params;
+    const id = parseInt(idStr);
     await prisma.kategorie.delete({ where: { id } });
     return NextResponse.json({ ok: true });
   } catch (err) {
