@@ -134,7 +134,8 @@ model PriceComparison {
 }
 
 model Kategorie {
-  id   Int    @id @default(autoincrement())
-  name String @unique
-  icon String @default("📄")
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  icon  String @default("📄")
+  color String @default("#6366F1")
 }

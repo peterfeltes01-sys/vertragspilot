@@ -17,11 +17,24 @@ import {
 function enrichContract(raw) {
   const berechnetsEnde = berechneAktuellesVertragsende(raw);
   const berechneteKuendigungsfrist = berechneNaechsteKuendigungsfrist(raw);
+
+  let naechsteKuendigung = berechneteKuendigungsfrist
+    ? berechneteKuendigungsfrist.toISOString()
+    : (raw.naechsteKuendigung ?? null);
+
+  // For monthly contracts with a manually-stored past deadline, advance to next month
+  if (raw.zahlungsintervall === "monatlich" && !berechneteKuendigungsfrist && naechsteKuendigung) {
+    const d = new Date(naechsteKuendigung);
+    const now = new Date();
+    if (d < now) {
+      while (d < now) d.setMonth(d.getMonth() + 1);
+      naechsteKuendigung = d.toISOString();
+    }
+  }
+
   return {
     ...raw,
-    naechsteKuendigung: berechneteKuendigungsfrist
-      ? berechneteKuendigungsfrist.toISOString()
-      : (raw.naechsteKuendigung ?? null),
+    naechsteKuendigung,
     berechnetsVertragsende: berechnetsEnde ? berechnetsEnde.toISOString() : null,
     berechneterStatus: getVertragsStatus(raw),
     tagesBisKuendigungsfrist: getTagesBisKuendigungsfrist(raw),
@@ -91,14 +104,14 @@ function MiniBar({ value, max, color }) {
   );
 }
 
-function BarChart({ data, total }) {
+function BarChart({ data, total, colors }) {
   const max = data[0]?.[1] || 1;
   return (
     <div className="flex flex-col gap-3">
       {data.map(([cat, value]) => {
         const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
         const share = total > 0 ? ((value / total) * 100).toFixed(1) : "0.0";
-        const color = CATEGORY_COLORS[cat] || "#6366F1";
+        const color = (colors || CATEGORY_COLORS)[cat] || "#6366F1";
         return (
           <div key={cat}>
             <div className="flex justify-between mb-1 gap-2">
@@ -312,7 +325,7 @@ function NotizenChecklist() {
 
 // ─── Dashboard ───────────────────────────────────────
 
-function Dashboard({ contracts, navigate }) {
+function Dashboard({ contracts, navigate, katColors }) {
   const activeContracts = contracts.filter(c => c.berechneterStatus !== "gekuendigt" && c.berechneterStatus !== "ausgelaufen");
   const totalMonthly = activeContracts.reduce((s, c) => s + toMonthly(c.kosten, c.zahlungsintervall), 0);
   const [pendingReminders, setPendingReminders] = useState([]);
@@ -421,7 +434,7 @@ function Dashboard({ contracts, navigate }) {
 
         <Card>
           <h3 className="text-[15px] font-bold mb-3" style={{ color: "#F8FAFC" }}>💸 Kosten nach Kategorie</h3>
-          <BarChart data={catCosts.slice(0, 5)} total={totalMonthly} />
+          <BarChart data={catCosts.slice(0, 5)} total={totalMonthly} colors={katColors} />
         </Card>
 
         <NotizenChecklist />
@@ -526,7 +539,8 @@ function checkColor(lastCheck) {
 
 // ─── Contract List ───────────────────────────────────
 
-function ContractList({ contracts, navigate, onDelete }) {
+function ContractList({ contracts, navigate, onDelete, katColors }) {
+  const cc = (name) => (katColors || CATEGORY_COLORS)[name] || "#6366F1";
   const [search, setSearch] = useState("");
   const [filterCat, setFilterCat] = useState("all");
   const [filterInterval, setFilterInterval] = useState("all");
@@ -681,7 +695,7 @@ function ContractList({ contracts, navigate, onDelete }) {
             >
               <div
                 className="shrink-0 w-10 h-10 rounded-xl flex items-center justify-center text-xl"
-                style={{ background: (CATEGORY_COLORS[c.kategorie] || "#6366F1") + "20" }}
+                style={{ background: cc(c.kategorie) + "20" }}
               >
                 {CATEGORY_ICONS[c.kategorie] || "📄"}
               </div>
@@ -738,7 +752,7 @@ function ContractList({ contracts, navigate, onDelete }) {
                   <td className="p-3 border-b text-base" style={{ borderColor: "#1E293B15" }}>{CATEGORY_ICONS[c.kategorie] || "📄"}</td>
                   <td className="p-3 border-b font-semibold text-sm" style={{ borderColor: "#1E293B15", color: "#F8FAFC" }}>{c.vertrag}</td>
                   <td className="p-3 border-b text-sm" style={{ borderColor: "#1E293B15" }}>
-                    <Badge bg={(CATEGORY_COLORS[c.kategorie] || "#6366F1") + "20"} color={CATEGORY_COLORS[c.kategorie] || "#6366F1"}>{c.kategorie}</Badge>
+                    <Badge bg={cc(c.kategorie) + "20"} color={cc(c.kategorie)}>{c.kategorie}</Badge>
                   </td>
                   <td className="p-3 border-b text-sm font-semibold tabular-nums" style={{ borderColor: "#1E293B15" }}>{c.kosten != null ? formatCurrency(toMonthly(c.kosten, c.zahlungsintervall)) : "—"}</td>
                   <td className="p-3 border-b text-sm" style={{ borderColor: "#1E293B15", color: "#94A3B8" }}>
@@ -1537,7 +1551,8 @@ function TabCalendar({ contract }) {
 
 // ─── Contract Detail ─────────────────────────────────
 
-function ContractDetail({ contract, konten = [], navigate, onDelete }) {
+function ContractDetail({ contract, konten = [], navigate, onDelete, katColors }) {
+  const cc = (name) => (katColors || CATEGORY_COLORS)[name] || "#6366F1";
   if (!contract) return null;
   const kontoName = contract.kontoId ? (konten.find(k => k.id === contract.kontoId)?.bezeichnung ?? null) : null;
   const monthly = toMonthly(contract.kosten, contract.zahlungsintervall);
@@ -1576,12 +1591,12 @@ function ContractDetail({ contract, konten = [], navigate, onDelete }) {
       <button className="text-xs border rounded-md px-3 py-1.5 mb-5" style={{ borderColor: "#334155", color: "#94A3B8" }} onClick={() => navigate("list")}>← Zurück</button>
 
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-12 h-12 md:w-14 md:h-14 shrink-0 rounded-xl flex items-center justify-center text-2xl md:text-3xl" style={{ background: (CATEGORY_COLORS[contract.kategorie] || "#6366F1") + "20" }}>
+        <div className="w-12 h-12 md:w-14 md:h-14 shrink-0 rounded-xl flex items-center justify-center text-2xl md:text-3xl" style={{ background: cc(contract.kategorie) + "20" }}>
           {CATEGORY_ICONS[contract.kategorie] || "📄"}
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-lg md:text-2xl font-extrabold tracking-tight truncate" style={{ color: "#F8FAFC" }}>{contract.vertrag}</h1>
-          <Badge bg={(CATEGORY_COLORS[contract.kategorie] || "#6366F1") + "20"} color={CATEGORY_COLORS[contract.kategorie] || "#6366F1"}>{contract.kategorie}</Badge>
+          <Badge bg={cc(contract.kategorie) + "20"} color={cc(contract.kategorie)}>{contract.kategorie}</Badge>
         </div>
         <StatusBadge berechneterStatus={contract.berechneterStatus} tage={tage} reminderEnabled={reminderEnabled} />
       </div>
@@ -1943,7 +1958,7 @@ function ContractForm({ contract, kategorien, konten = [], onKontoAdded, navigat
 
 // ─── Kosten-Übersicht ────────────────────────────────
 
-function KostenUebersicht({ contracts }) {
+function KostenUebersicht({ contracts, katColors }) {
   const aktiv = contracts.filter(c => c.berechneterStatus !== "gekuendigt" && c.berechneterStatus !== "ausgelaufen");
 
   const totalMonthly = aktiv.reduce((s, c) => s + toMonthly(c.kosten, c.zahlungsintervall), 0);
@@ -1986,7 +2001,7 @@ function KostenUebersicht({ contracts }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
         <Card>
           <h3 className="text-[15px] font-bold mb-5" style={{ color: "#F8FAFC" }}>📊 Kosten nach Kategorie</h3>
-          <BarChart data={catData.map(([k, v]) => [k, v.monthly])} total={totalMonthly} />
+          <BarChart data={catData.map(([k, v]) => [k, v.monthly])} total={totalMonthly} colors={katColors} />
         </Card>
 
         <Card>
@@ -2300,8 +2315,8 @@ function Hilfe() {
 
 // ─── Einstellungen ───────────────────────────────────
 
-function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
-  const [katForm, setKatForm] = useState({ name: "", icon: "📄" });
+function Einstellungen({ kategorien, setKategorien, konten, setKonten, setContracts }) {
+  const [katForm, setKatForm] = useState({ name: "", icon: "📄", color: "#6366F1" });
   const [editKat, setEditKat] = useState(null);
   const [kontoForm, setKontoForm] = useState({ bezeichnung: "", iban: "" });
   const [editKonto, setEditKonto] = useState(null);
@@ -2310,17 +2325,22 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
   const ICON_SUGGESTIONS = ["📄","💡","🚗","🏠","📱","💳","🎵","🎮","🏋️","🌍","💼","🐾","🍕","✈️","🔧","🎓","🏥","⚡"];
 
   const saveKat = async () => {
-    if (!katForm.name.trim()) return;
+    const data = editKat || katForm;
+    if (!data.name.trim()) return;
     setSaving(true);
     if (editKat) {
+      const oldName = kategorien.find(k => k.id === editKat.id)?.name;
       const res = await fetch(`/api/kategorien/${editKat.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(katForm),
+        body: JSON.stringify({ name: editKat.name, icon: editKat.icon, color: editKat.color || "#6366F1" }),
       });
       if (res.ok) {
         const updated = await res.json();
         setKategorien(ks => ks.map(k => k.id === updated.id ? updated : k));
+        if (oldName && oldName !== updated.name) {
+          setContracts(cs => cs.map(c => c.kategorie === oldName ? { ...c, kategorie: updated.name } : c));
+        }
         setEditKat(null);
       } else {
         const err = await res.json();
@@ -2340,7 +2360,7 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
         alert(err.error);
       }
     }
-    setKatForm({ name: "", icon: "📄" });
+    setKatForm({ name: "", icon: "📄", color: "#6366F1" });
     setSaving(false);
   };
 
@@ -2449,6 +2469,42 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
                 >{ico}</button>
               ))}
             </div>
+            <div className="mb-3">
+              <label className="block text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#94A3B8" }}>Schriftfarbe</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  type="color"
+                  className="w-9 h-9 rounded cursor-pointer shrink-0"
+                  style={{ background: "transparent", border: "1px solid #334155", padding: "2px" }}
+                  value={editKat ? (editKat.color || "#6366F1") : (katForm.color || "#6366F1")}
+                  onChange={e => editKat
+                    ? setEditKat(k => ({ ...k, color: e.target.value }))
+                    : setKatForm(f => ({ ...f, color: e.target.value }))
+                  }
+                />
+                {["#3B82F6","#10B981","#F59E0B","#EF4444","#8B5CF6","#EC4899","#14B8A6","#F97316","#6366F1","#64748B"].map(c => {
+                  const current = editKat ? (editKat.color || "#6366F1") : (katForm.color || "#6366F1");
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      className="w-5 h-5 rounded-full shrink-0 transition-transform hover:scale-110"
+                      style={{ background: c, border: `2px solid ${current === c ? "#F8FAFC" : "transparent"}`, outline: current === c ? "1px solid #64748B" : "none" }}
+                      onClick={() => editKat
+                        ? setEditKat(k => ({ ...k, color: c }))
+                        : setKatForm(f => ({ ...f, color: c }))
+                      }
+                    />
+                  );
+                })}
+                <span
+                  className="text-xs px-2.5 py-1 rounded-md font-semibold ml-1"
+                  style={{ background: (editKat ? editKat.color : katForm.color) + "20", color: editKat ? editKat.color : katForm.color }}
+                >
+                  Vorschau
+                </span>
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 onClick={saveKat}
@@ -2460,7 +2516,7 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
               </button>
               {editKat && (
                 <button
-                  onClick={() => { setEditKat(null); setKatForm({ name: "", icon: "📄" }); }}
+                  onClick={() => { setEditKat(null); setKatForm({ name: "", icon: "📄", color: "#6366F1" }); }}
                   className="rounded-lg px-4 py-2 text-sm font-semibold"
                   style={{ background: "#475569", color: "#F8FAFC" }}
                 >
@@ -2476,7 +2532,8 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten }) {
               {kategorien.map(kat => (
                 <div key={kat.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
                   <span className="text-base w-6 shrink-0">{kat.icon}</span>
-                  <span className="flex-1 text-sm" style={{ color: "#E2E8F0" }}>{kat.name}</span>
+                  <span className="flex-1 text-sm" style={{ color: kat.color || CATEGORY_COLORS[kat.name] || "#E2E8F0" }}>{kat.name}</span>
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: kat.color || CATEGORY_COLORS[kat.name] || "#6366F1" }} />
                   <button onClick={() => { setEditKat({ ...kat }); }} className="text-[11px] px-2 py-0.5 rounded" style={{ color: "#94A3B8", background: "#1E293B" }}>✏️</button>
                   <button onClick={() => deleteKat(kat.id)} className="text-[11px] px-2 py-0.5 rounded" style={{ color: "#F87171", background: "#1E293B" }}>✕</button>
                 </div>
@@ -2610,6 +2667,12 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
   const warningCount = activeContracts.filter(c => getWarningLevel(c) !== "none").length;
   const totalMonthly = activeContracts.reduce((s, c) => s + toMonthly(c.kosten, c.zahlungsintervall), 0);
 
+  const katColors = useMemo(() => {
+    const map = { ...CATEGORY_COLORS };
+    kategorien.forEach(k => { if (k.color) map[k.name] = k.color; });
+    return map;
+  }, [kategorien]);
+
   const navItems = [
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "list", icon: "📋", label: "Verträge / Periodische Zahlung" },
@@ -2724,14 +2787,14 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
       {/* ── Main content ── */}
       {/* pt-14 = height of mobile top bar; md:pt-0 resets on desktop */}
       <main className="md:ml-[260px] pt-14 md:pt-0 p-4 md:p-6 lg:p-8 min-h-screen">
-        {page === "dashboard" && <Dashboard contracts={contracts} navigate={navigate} />}
-        {page === "list" && <ContractList contracts={contracts} navigate={navigate} onDelete={handleDelete} />}
-        {page === "detail" && <ContractDetail contract={selectedContract} konten={konten} navigate={navigate} onDelete={handleDelete} />}
+        {page === "dashboard" && <Dashboard contracts={contracts} navigate={navigate} katColors={katColors} />}
+        {page === "list" && <ContractList contracts={contracts} navigate={navigate} onDelete={handleDelete} katColors={katColors} />}
+        {page === "detail" && <ContractDetail contract={selectedContract} konten={konten} navigate={navigate} onDelete={handleDelete} katColors={katColors} />}
         {page === "form" && <ContractForm contract={selectedContract} kategorien={kategorien} konten={konten} onKontoAdded={k => setKonten(ks => [...ks, k].sort((a,b) => a.bezeichnung.localeCompare(b.bezeichnung)))} navigate={navigate} onSave={handleSave} />}
         {page === "warnings" && <Warnings contracts={contracts} navigate={navigate} />}
-        {page === "kosten" && <KostenUebersicht contracts={contracts} />}
+        {page === "kosten" && <KostenUebersicht contracts={contracts} katColors={katColors} />}
         {page === "calendar" && <CalendarView contracts={contracts} />}
-        {page === "einstellungen" && <Einstellungen kategorien={kategorien} setKategorien={setKategorien} konten={konten} setKonten={setKonten} />}
+        {page === "einstellungen" && <Einstellungen kategorien={kategorien} setKategorien={setKategorien} konten={konten} setKonten={setKonten} setContracts={setContracts} />}
         {page === "hilfe" && <Hilfe />}
       </main>
     </div>

@@ -7,6 +7,7 @@ interface VertragInput {
   autoVerlaengerung?: boolean | null;
   verlaengerungMonate?: number | null;
   gekuendigt?: boolean | null;
+  zahlungsintervall?: string | null;
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -38,7 +39,23 @@ export function berechneNaechsteKuendigungsfrist(vertrag: VertragInput): Date | 
   if (!vertrag.laufzeitMonate || vertrag.kuendigungsfristMonate == null) return null;
   const ende = berechneAktuellesVertragsende(vertrag);
   if (!ende) return null;
-  return addMonths(ende, -vertrag.kuendigungsfristMonate);
+
+  let frist = addMonths(ende, -vertrag.kuendigungsfristMonate);
+  const now = new Date();
+
+  // For monthly auto-renewing contracts, advance frist if it already passed
+  if (
+    vertrag.zahlungsintervall === "monatlich" &&
+    vertrag.autoVerlaengerung !== false &&
+    frist < now
+  ) {
+    const verlaengerung = vertrag.verlaengerungMonate || vertrag.laufzeitMonate;
+    while (frist < now) {
+      frist = addMonths(frist, verlaengerung);
+    }
+  }
+
+  return frist;
 }
 
 export function getVertragsStatus(vertrag: VertragInput): VertragStatus {
