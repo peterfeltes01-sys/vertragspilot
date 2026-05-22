@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { signOut } from "next-auth/react";
 import {
   CATEGORY_ICONS, CATEGORY_COLORS, toMonthly,
   formatCurrency, formatDate, getDaysUntil, getWarningLevel,
@@ -3799,7 +3800,16 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
 
         {/* Footer */}
         <div className="px-5 py-4 text-[11px]" style={{ borderTop: "1px solid #1E293B", color: "#475569" }}>
-          {activeContracts.length} aktive Verträge · {formatCurrency(totalMonthly)}/Mo
+          <div className="mb-2">{activeContracts.length} aktive Verträge · {formatCurrency(totalMonthly)}/Mo</div>
+          <button
+            onClick={() => signOut({ callbackUrl: "/signin" })}
+            className="text-[11px] flex items-center gap-1.5"
+            style={{ color: "#475569" }}
+            onMouseEnter={e => e.currentTarget.style.color = "#94A3B8"}
+            onMouseLeave={e => e.currentTarget.style.color = "#475569"}
+          >
+            ⎋ Abmelden
+          </button>
         </div>
       </aside>
 
