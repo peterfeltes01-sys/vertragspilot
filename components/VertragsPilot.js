@@ -791,11 +791,42 @@ function ContractList({ contracts, navigate, onDelete, katColors }) {
 
 // ─── Detail Tab Components ────────────────────────────
 
-function TabDocuments({ contractId }) {
+function TabDocuments({ contractId, contract }) {
   const [docs, setDocs] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [form, setForm] = useState({ bezeichnung: "", kategorie: "sonstiges" });
+  const [analyseLoading, setAnalyseLoading] = useState(null);
+  const [analyseOpen, setAnalyseOpen] = useState(new Set());
+
+  const handleAnalyse = async (docId) => {
+    setAnalyseLoading(docId);
+    try {
+      const res = await fetch("/api/analyse/dokument", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documentId: docId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setDocs(d => d.map(x => x.id === docId ? { ...x, analyseergebnis: data, analysiertAm: new Date().toISOString() } : x));
+        setAnalyseOpen(s => new Set([...s, docId]));
+      } else {
+        alert("Analyse fehlgeschlagen: " + (data.error || "Unbekannter Fehler"));
+      }
+    } catch (err) {
+      alert("Analyse fehlgeschlagen: " + err.message);
+    }
+    setAnalyseLoading(null);
+  };
+
+  const toggleAnalysePanel = (docId) => {
+    setAnalyseOpen(s => {
+      const n = new Set(s);
+      n.has(docId) ? n.delete(docId) : n.add(docId);
+      return n;
+    });
+  };
 
   useEffect(() => {
     fetch(`/api/contracts/${contractId}/documents`)
@@ -854,7 +885,7 @@ function TabDocuments({ contractId }) {
     return "📎";
   };
 
-  const docKatLabel = { vertrag: "Vertrag", rechnung: "Rechnung", kuendigung: "Kündigung", nachweis: "Nachweis", sonstiges: "Sonstiges" };
+  const docKatLabel = { vertrag: "Vertrag", rechnung: "Rechnung", kuendigung: "Kündigung", nachweis: "Nachweis", beitragsanpassung: "Beitragsanpassung", sonstiges: "Sonstiges" };
 
   const formatBytes = (b) => {
     if (b < 1024) return `${b} B`;
@@ -862,8 +893,36 @@ function TabDocuments({ contractId }) {
     return `${(b / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const toMonthlyLocal = (k, iv) => {
+    if (!k) return null;
+    const m = { monatlich: 1, vierteljährlich: 3, halbjährlich: 6, jährlich: 12 };
+    return k / (m[iv] || 1);
+  };
+
   return (
     <div>
+      {contract && (
+        <Card className="mb-4" style={{ background: "#111827", border: "1px solid #1E293B" }}>
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#475569" }}>Vertragsinformationen</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {[
+              ["Anbieter", contract.vertragspartner],
+              ["Kategorie", contract.kategorie],
+              ["Kundennummer", contract.kundennummer],
+              ["Monatlich", toMonthlyLocal(contract.kosten, contract.zahlungsintervall) != null ? `${toMonthlyLocal(contract.kosten, contract.zahlungsintervall).toFixed(2)} €` : null],
+              ["Vertragsbeginn", contract.vertragsbeginn ? new Date(contract.vertragsbeginn).toLocaleDateString("de-DE") : null],
+              ["Vertragsende", contract.vertragsende ? new Date(contract.vertragsende).toLocaleDateString("de-DE") : null],
+              ["Kündigungsfrist", contract.kuendigungsfrist],
+              ["Nächste Kündigung", contract.naechsteKuendigung ? new Date(contract.naechsteKuendigung).toLocaleDateString("de-DE") : null],
+            ].filter(([, v]) => v).map(([label, val]) => (
+              <div key={label} className="rounded-lg px-2.5 py-1.5" style={{ background: "#0F172A" }}>
+                <p className="text-[10px]" style={{ color: "#475569" }}>{label}</p>
+                <p className="text-[12px] font-medium mt-0.5" style={{ color: "#CBD5E1" }}>{val}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
       <Card className="mb-4">
         <h3 className="text-sm font-bold mb-3" style={{ color: "#F8FAFC" }}>📎 Dokument hochladen</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
@@ -909,19 +968,44 @@ function TabDocuments({ contractId }) {
       ) : (
         <div className="flex flex-col gap-2">
           {docs.map(doc => (
-            <div key={doc.id} className="flex items-center gap-3 rounded-xl px-4 py-3" style={{ background: "#1E293B", border: "1px solid #334155" }}>
-              <span className="text-2xl shrink-0">{docIcon(doc.dateityp)}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold truncate" style={{ color: "#F8FAFC" }}>{doc.bezeichnung || doc.dateiname}</p>
-                <p className="text-[11px] mt-0.5" style={{ color: "#64748B" }}>
-                  {doc.dateiname} · {formatBytes(doc.dateigroesse)} · {docKatLabel[doc.kategorie] || doc.kategorie} · {formatDate(doc.uploadDatum)}
-                </p>
+            <div key={doc.id} className="rounded-xl overflow-hidden" style={{ border: "1px solid #334155" }}>
+              <div className="flex items-center gap-3 px-4 py-3" style={{ background: "#1E293B" }}>
+                <span className="text-2xl shrink-0">{docIcon(doc.dateityp)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate" style={{ color: "#F8FAFC" }}>{doc.bezeichnung || doc.dateiname}</p>
+                  <p className="text-[11px] mt-0.5" style={{ color: "#64748B" }}>
+                    {doc.dateiname} · {formatBytes(doc.dateigroesse)} · {docKatLabel[doc.kategorie] || doc.kategorie} · {formatDate(doc.uploadDatum)}
+                  </p>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  {doc.dateityp?.includes("pdf") && (
+                    <button
+                      onClick={() => handleAnalyse(doc.id)}
+                      disabled={analyseLoading === doc.id}
+                      title={doc.analyseergebnis ? "Analyse aktualisieren" : "KI-Analyse starten"}
+                      className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
+                      style={{ background: doc.analyseergebnis ? "rgba(16,185,129,0.15)" : "rgba(139,92,246,0.15)", color: doc.analyseergebnis ? "#34D399" : "#A78BFA", opacity: analyseLoading === doc.id ? 0.5 : 1 }}
+                    >
+                      {analyseLoading === doc.id ? "⏳" : doc.analyseergebnis ? "✓ KI" : "🤖 KI"}
+                    </button>
+                  )}
+                  {doc.analyseergebnis && (
+                    <button
+                      onClick={() => toggleAnalysePanel(doc.id)}
+                      className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold"
+                      style={{ background: "rgba(99,102,241,0.15)", color: "#818CF8", border: "1px solid rgba(99,102,241,0.3)" }}
+                    >
+                      📊 {analyseOpen.has(doc.id) ? "▲" : "▼"}
+                    </button>
+                  )}
+                  <a href={`/api/documents/${doc.id}/download?inline=true`} target="_blank" rel="noopener noreferrer" className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60A5FA" }}>Öffnen</a>
+                  <a href={`/api/documents/${doc.id}/download`} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(16,185,129,0.15)", color: "#34D399" }}>↓</a>
+                  <button onClick={() => handleDelete(doc.id)} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(220,38,38,0.15)", color: "#F87171" }}>✕</button>
+                </div>
               </div>
-              <div className="flex gap-2 shrink-0">
-                <a href={`/api/documents/${doc.id}/download?inline=true`} target="_blank" rel="noopener noreferrer" className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(59,130,246,0.15)", color: "#60A5FA" }}>Öffnen</a>
-                <a href={`/api/documents/${doc.id}/download`} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(16,185,129,0.15)", color: "#34D399" }}>↓</a>
-                <button onClick={() => handleDelete(doc.id)} className="rounded-md px-2.5 py-1.5 text-[11px] font-semibold" style={{ background: "rgba(220,38,38,0.15)", color: "#F87171" }}>✕</button>
-              </div>
+              {doc.analyseergebnis && analyseOpen.has(doc.id) && (
+                <AnalyseErgebnisDokumentPanel ergebnis={doc.analyseergebnis} analysiertAm={doc.analysiertAm} dateiname={doc.dateiname} />
+              )}
             </div>
           ))}
         </div>
@@ -1584,6 +1668,7 @@ function ContractDetail({ contract, konten = [], navigate, onDelete, katColors }
     { id: "dokumente", label: "Dokumente", icon: "📎" },
     { id: "verlauf", label: "Verlauf", icon: "📈" },
     { id: "preisvergleich", label: "Preisvergleich", icon: "💡" },
+    { id: "ki-simulation", label: "KI-Simulation", icon: "🤖" },
   ];
 
   return (
@@ -1718,10 +1803,11 @@ function ContractDetail({ contract, konten = [], navigate, onDelete, katColors }
       )}
 
       {activeTab === "kalender" && <TabCalendar contract={contract} />}
-      {activeTab === "dokumente" && <TabDocuments contractId={contract.id} />}
+      {activeTab === "dokumente" && <TabDocuments contractId={contract.id} contract={contract} />}
       {activeTab === "verlauf" && <TabHistory contractId={contract.id} />}
       {activeTab === "erinnerungen" && <TabReminders contractId={contract.id} naechsteKuendigung={contract.naechsteKuendigung} />}
       {activeTab === "preisvergleich" && <TabComparisons contractId={contract.id} eigeneKosten={contract.kosten} eignesIntervall={contract.zahlungsintervall} />}
+      {activeTab === "ki-simulation" && <TabSimulation contract={contract} />}
     </div>
   );
 }
@@ -2621,6 +2707,937 @@ function Einstellungen({ kategorien, setKategorien, konten, setKonten, setContra
   );
 }
 
+// ─── KI-Analyse Components ───────────────────────────
+
+function druckAnalyse(ergebnis, analysiertAm, dateiname) {
+  const doc = ergebnis?.dokumente?.[0];
+  if (!doc) return;
+  const vd = doc.vertragsdaten;
+  const felder = vd ? [
+    ["Anbieter", vd.anbieter], ["Vertragsname", vd.vertragsname], ["Vertragsnummer", vd.vertragsnummer],
+    ["Beginn", vd.vertragsbeginn], ["Ende", vd.vertragsende], ["Kündigungsfrist", vd.kuendigungsfrist],
+    ["Monatlich", vd.kosten?.monatlich_umgerechnet != null ? Number(vd.kosten.monatlich_umgerechnet).toFixed(2) + " €" : null],
+    ["Jahresbeitrag", vd.kosten?.jahresbeitrag_brutto != null ? Number(vd.kosten.jahresbeitrag_brutto).toFixed(2) + " €" : null],
+  ].filter(([, v]) => v) : [];
+
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>KI-Analyse</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;max-width:800px;margin:40px auto;padding:0 20px}
+h1{font-size:20px;color:#4C1D95;border-bottom:2px solid #7C3AED;padding-bottom:8px;margin-bottom:4px}
+.sub{color:#6B7280;margin-bottom:20px;font-size:11px}
+h2{font-size:13px;color:#4C1D95;margin-top:20px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.item{display:flex;justify-content:space-between;padding:6px 10px;background:#F3F4F6;border-radius:6px}
+.lbl{color:#6B7280}.val{font-weight:600}
+.warn{background:#FEF3C7;border-left:3px solid #D97706;padding:8px 12px;border-radius:4px;margin:4px 0}
+.empf{background:#EDE9FE;border-left:3px solid #7C3AED;padding:8px 12px;border-radius:4px;margin:4px 0}
+.title{font-weight:700;margin-bottom:2px}.text{color:#374151;line-height:1.5}
+.footer{margin-top:40px;font-size:10px;color:#9CA3AF;border-top:1px solid #E5E7EB;padding-top:8px}
+@media print{body{margin:20px}}</style></head><body>
+<h1>🤖 KI-Analyse – ${doc.dokumenttyp_label || doc.dokumenttyp || "Dokument"}</h1>
+<div class="sub">${dateiname || ""} · Analysiert: ${analysiertAm ? new Date(analysiertAm).toLocaleDateString("de-DE") : "–"}</div>
+${felder.length ? `<h2>Vertragsdaten</h2><div class="grid">${felder.map(([l, v]) => `<div class="item"><span class="lbl">${l}</span><span class="val">${v}</span></div>`).join("")}</div>` : ""}
+${doc.warnungen?.length ? `<h2>Hinweise</h2>${doc.warnungen.map(w => `<div class="warn"><div class="title">${w.titel}</div><div class="text">${w.text}</div></div>`).join("")}` : ""}
+${doc.empfehlungen?.length ? `<h2>Empfehlungen</h2>${doc.empfehlungen.map(e => `<div class="empf"><div class="title">${e.titel}</div><div class="text">${e.text}</div></div>`).join("")}` : ""}
+<div class="footer">Erstellt mit VertragsPilot · ${new Date().toLocaleDateString("de-DE")}</div>
+</body></html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+  win.print();
+}
+
+function AnalyseErgebnisDokumentPanel({ ergebnis, analysiertAm, dateiname }) {
+  if (!ergebnis || !ergebnis.dokumente?.[0]) return null;
+  const doc = ergebnis.dokumente[0];
+  const anbieter = ergebnis.anbieter_analyse;
+
+  const confColor = { high: "#34D399", medium: "#FBBF24", low: "#F87171" };
+  const confLabel = { high: "Hohe Genauigkeit", medium: "Mittlere Genauigkeit", low: "Niedrige Genauigkeit" };
+  const warnColor = { warnung: "#FBBF24", info: "#60A5FA", fehler: "#F87171" };
+  const warnBg = { warnung: "rgba(217,119,6,0.08)", info: "rgba(59,130,246,0.08)", fehler: "rgba(220,38,38,0.08)" };
+  const empfColor = { pruefung: "#A78BFA", kuendigung: "#F87171", wechsel: "#34D399", optimierung: "#60A5FA" };
+
+  const vertrDaten = doc.vertragsdaten;
+  const versDetails = doc.versicherungs_details;
+
+  return (
+    <div className="px-4 pb-4 pt-3" style={{ background: "#0F172A", borderTop: "1px solid #1E293B" }}>
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: "#64748B" }}>🤖 KI-Analyse</span>
+        <span className="text-[11px] font-semibold" style={{ color: "#94A3B8" }}>{doc.dokumenttyp_label || doc.dokumenttyp}</span>
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full" style={{ background: (confColor[doc.confidence] || "#60A5FA") + "20", color: confColor[doc.confidence] || "#60A5FA" }}>
+          {confLabel[doc.confidence] || doc.confidence}
+        </span>
+        {analysiertAm && (
+          <span className="text-[10px]" style={{ color: "#475569" }}>
+            Analysiert: {new Date(analysiertAm).toLocaleDateString("de-DE")}
+          </span>
+        )}
+        <button
+          onClick={() => druckAnalyse(ergebnis, analysiertAm, dateiname)}
+          className="ml-auto rounded-md px-2.5 py-1 text-[10px] font-semibold"
+          style={{ background: "rgba(59,130,246,0.12)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.25)" }}
+          title="Als PDF speichern"
+        >
+          🖨️ PDF
+        </button>
+      </div>
+
+      {vertrDaten && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "#475569" }}>Extrahierte Vertragsdaten</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {[
+              ["Anbieter", vertrDaten.anbieter],
+              ["Vertragsname", vertrDaten.vertragsname],
+              ["Vertragsnummer", vertrDaten.vertragsnummer],
+              ["Vertragsbeginn", vertrDaten.vertragsbeginn],
+              ["Vertragsende", vertrDaten.vertragsende],
+              ["Kündigungsfrist", vertrDaten.kuendigungsfrist],
+              ["Monatlich", vertrDaten.kosten?.monatlich_umgerechnet != null ? `${Number(vertrDaten.kosten.monatlich_umgerechnet).toFixed(2)} €` : null],
+              ["Jahresbeitrag brutto", vertrDaten.kosten?.jahresbeitrag_brutto != null ? `${Number(vertrDaten.kosten.jahresbeitrag_brutto).toFixed(2)} €` : null],
+              ["Kategorie-Vorschlag", vertrDaten.kategorie_vorschlag],
+            ].filter(([, v]) => v).map(([label, val]) => (
+              <div key={label} className="flex justify-between gap-2 py-1.5 px-2.5 rounded-lg" style={{ background: "#1E293B" }}>
+                <span className="text-[11px]" style={{ color: "#64748B" }}>{label}</span>
+                <span className="text-[11px] font-medium text-right" style={{ color: "#CBD5E1" }}>{val}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {versDetails && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "#475569" }}>Versicherungsdetails</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 mb-1.5">
+            {[
+              ["Sparte", versDetails.sparte],
+              ["Tarif-Stufe", versDetails.tarif_stufe],
+              ["Versicherungssumme", versDetails.versicherungssumme],
+              ["Selbstbeteiligung", versDetails.selbstbeteiligung],
+              ["Geltungsbereich", versDetails.geltungsbereich],
+            ].filter(([, v]) => v).map(([label, val]) => (
+              <div key={label} className="flex justify-between gap-2 py-1.5 px-2.5 rounded-lg" style={{ background: "#1E293B" }}>
+                <span className="text-[11px]" style={{ color: "#64748B" }}>{label}</span>
+                <span className="text-[11px] font-medium text-right" style={{ color: "#CBD5E1" }}>{val}</span>
+              </div>
+            ))}
+          </div>
+          {versDetails.versicherte_gefahren?.length > 0 && (
+            <div className="px-2.5 py-2 rounded-lg mb-1" style={{ background: "#1E293B" }}>
+              <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: "#475569" }}>Versicherte Gefahren</p>
+              <div className="flex flex-wrap gap-1">
+                {versDetails.versicherte_gefahren.map((g, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(16,185,129,0.1)", color: "#34D399" }}>{g}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {versDetails.ausschluesse?.length > 0 && (
+            <div className="px-2.5 py-2 rounded-lg" style={{ background: "#1E293B" }}>
+              <p className="text-[10px] uppercase tracking-wider mb-1.5" style={{ color: "#475569" }}>Ausschlüsse</p>
+              <div className="flex flex-wrap gap-1">
+                {versDetails.ausschluesse.map((a, i) => (
+                  <span key={i} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(220,38,38,0.1)", color: "#F87171" }}>{a}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {doc.rabatte?.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "#475569" }}>Rabatte</p>
+          {doc.rabatte.map((r, i) => (
+            <div key={i} className="rounded-lg px-2.5 py-2 mb-1" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.2)" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold" style={{ color: "#A78BFA" }}>{r.rabatt_name}</span>
+                {r.rabatt_prozent != null && <span className="text-[11px] font-bold" style={{ color: "#A78BFA" }}>−{r.rabatt_prozent}%</span>}
+              </div>
+              {r.bedingung && <p className="text-[10px] mt-0.5" style={{ color: "#64748B" }}>{r.bedingung}</p>}
+              {r.auswirkung_bei_wegfall && <p className="text-[10px] mt-0.5" style={{ color: "#F87171" }}>⚠ {r.auswirkung_bei_wegfall}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {doc.warnungen?.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "#475569" }}>Hinweise</p>
+          {doc.warnungen.map((w, i) => (
+            <div key={i} className="rounded-lg px-2.5 py-2 mb-1" style={{ background: warnBg[w.typ] || "rgba(59,130,246,0.08)", border: `1px solid ${warnColor[w.typ] || "#60A5FA"}30` }}>
+              <p className="text-[11px] font-semibold" style={{ color: warnColor[w.typ] || "#60A5FA" }}>{w.titel}</p>
+              <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: "#94A3B8" }}>{w.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {doc.empfehlungen?.length > 0 && (
+        <div className="mb-3">
+          <p className="text-[10px] uppercase tracking-wider font-semibold mb-1.5" style={{ color: "#475569" }}>Empfehlungen</p>
+          {doc.empfehlungen.map((e, i) => (
+            <div key={i} className="rounded-lg px-2.5 py-2 mb-1" style={{ background: `${empfColor[e.typ] || "#60A5FA"}15`, border: `1px solid ${empfColor[e.typ] || "#60A5FA"}30` }}>
+              <p className="text-[11px] font-semibold" style={{ color: empfColor[e.typ] || "#60A5FA" }}>{e.titel}</p>
+              <p className="text-[10px] mt-0.5 leading-relaxed" style={{ color: "#94A3B8" }}>{e.text}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {anbieter && (
+        <div className="rounded-lg px-2.5 py-2" style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)" }}>
+          <p className="text-[11px] font-semibold mb-1" style={{ color: "#818CF8" }}>📦 {anbieter.anbieter} – Anbieter-Überblick</p>
+          {anbieter.gesamtkosten_monatlich > 0 && (
+            <p className="text-[10px]" style={{ color: "#64748B" }}>Gesamtkosten beim Anbieter: <strong style={{ color: "#CBD5E1" }}>{Number(anbieter.gesamtkosten_monatlich).toFixed(2)} €/Mo</strong></p>
+          )}
+          {anbieter.aktive_rabatte?.map((r, i) => (
+            <p key={i} className="text-[10px] mt-0.5" style={{ color: "#A78BFA" }}>✓ {r.name}{r.geschaetzter_gesamtrabatt_jaehrlich ? ` (ca. ${Number(r.geschaetzter_gesamtrabatt_jaehrlich).toFixed(2)} €/Jahr)` : ""}</p>
+          ))}
+          {anbieter.kuendigungs_auswirkung && (
+            <p className="text-[10px] mt-1 leading-relaxed" style={{ color: "#64748B" }}>{anbieter.kuendigungs_auswirkung}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function druckMarktVergleich(result) {
+  if (!result) return;
+  const einsch = { sehr_guenstig: "Sehr günstig", guenstig: "Günstig", marktgerecht: "Marktgerecht", leicht_teuer: "Leicht über Markt", teuer: "Zu teuer", sehr_teuer: "Deutlich zu teuer", pruefen: "Prüfen empfohlen" };
+  const mv = result.marktbewertung || {};
+  const emp = result.empfehlung || {};
+
+  const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Marktvergleich</title>
+<style>body{font-family:Arial,sans-serif;font-size:12px;color:#1a1a1a;max-width:800px;margin:40px auto;padding:0 20px}
+h1{font-size:20px;color:#059669;border-bottom:2px solid #059669;padding-bottom:8px;margin-bottom:4px}
+.sub{color:#6B7280;margin-bottom:20px;font-size:11px}
+h2{font-size:13px;color:#374151;margin-top:20px;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.05em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.item{display:flex;justify-content:space-between;padding:6px 10px;background:#F3F4F6;border-radius:6px}
+.lbl{color:#6B7280}.val{font-weight:600}
+.highlight{background:#D1FAE5;border-left:3px solid #059669;padding:8px 12px;border-radius:4px;margin:4px 0}
+.alt{background:#F3F4F6;padding:8px 12px;border-radius:4px;margin:4px 0}
+.tip{color:#374151;margin:4px 0;padding-left:12px}
+.footer{margin-top:40px;font-size:10px;color:#9CA3AF;border-top:1px solid #E5E7EB;padding-top:8px}
+@media print{body{margin:20px}}</style></head><body>
+<h1>⚖️ Marktvergleich</h1>
+<div class="sub">Erstellt am ${result._createdAt ? new Date(result._createdAt).toLocaleDateString("de-DE") : new Date().toLocaleDateString("de-DE")} · VertragsPilot</div>
+
+<h2>Ergebnis</h2>
+<div class="highlight">
+<strong>${einsch[mv.einschaetzung] || mv.einschaetzung_label || "–"}</strong>${emp.handlung_label ? ` · ${emp.handlung_label}` : ""}
+${mv.ihr_preis_monatlich != null ? `<br>Dein Preis: <strong>${Number(mv.ihr_preis_monatlich).toFixed(2)} €/Mo</strong>` : ""}
+${mv.marktdurchschnitt_monatlich != null ? ` · Marktdurchschnitt: <strong>${Number(mv.marktdurchschnitt_monatlich).toFixed(2)} €/Mo</strong>` : ""}
+${mv.differenz_jaehrlich != null && Math.abs(mv.differenz_jaehrlich) > 0.5 ? `<br>${mv.differenz_jaehrlich > 0 ? `Du zahlst ca. <strong>${Number(mv.differenz_jaehrlich).toFixed(0)} € mehr</strong>/Jahr` : `Du sparst ca. <strong>${Math.abs(Number(mv.differenz_jaehrlich)).toFixed(0)} €</strong>/Jahr`}` : ""}
+</div>
+${mv.begruendung ? `<p>${mv.begruendung}</p>` : ""}
+${emp.zusammenfassung ? `<p><strong>Empfehlung:</strong> ${emp.zusammenfassung}</p>` : ""}
+
+${result.alternative_anbieter?.length ? `<h2>Alternative Anbieter</h2>${result.alternative_anbieter.map(a => `<div class="alt"><strong>${a.anbieter}</strong>${a.geschaetzter_preis_monatlich != null ? ` – ca. ${Number(a.geschaetzter_preis_monatlich).toFixed(2)} €/Mo` : ""}<br>${a.vorteile || ""}${a.nachteile ? `<br><em>${a.nachteile}</em>` : ""}</div>`).join("")}` : ""}
+
+${result.tipps?.length ? `<h2>Tipps</h2>${result.tipps.map(t => `<p class="tip">→ ${t}</p>`).join("")}` : ""}
+
+<div class="footer">Erstellt mit VertragsPilot · ${new Date().toLocaleDateString("de-DE")}</div>
+</body></html>`;
+
+  const win = window.open("", "_blank");
+  win.document.write(html);
+  win.document.close();
+  win.print();
+}
+
+function MarktVergleich({ contracts = [] }) {
+  const [mode, setMode] = useState("upload"); // "upload" | "vertrag"
+  const [files, setFiles] = useState([]);
+  const [selectedContractId, setSelectedContractId] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [savedResult, setSavedResult] = useState(undefined); // undefined=loading, null=none
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/analyse/marktvergleich")
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { setSavedResult(data); if (data) setResult(data); })
+      .catch(() => setSavedResult(null));
+  }, []);
+
+  const contractsWithPdfs = contracts.filter(c => !c.archiviert);
+
+  const handleFiles = async (e) => {
+    const newFiles = Array.from(e.target.files).filter(f => f.type === "application/pdf" && f.size <= 4 * 1024 * 1024);
+    const processed = await Promise.all(newFiles.map(f => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ name: f.name, base64: reader.result.split(",")[1], size: f.size });
+      reader.readAsDataURL(f);
+    })));
+    setFiles(prev => [...prev, ...processed].slice(0, 3));
+    e.target.value = "";
+  };
+
+  const removeFile = (i) => setFiles(f => f.filter((_, idx) => idx !== i));
+
+  const handleStart = async () => {
+    const canStart = mode === "upload" ? files.length > 0 : !!selectedContractId;
+    if (!canStart) return;
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const body = mode === "vertrag"
+        ? { contractId: selectedContractId }
+        : { documents: files };
+      const res = await fetch("/api/analyse/marktvergleich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (res.ok) { setResult(data); setSavedResult(data); }
+      else setError(data.error || "Vergleich fehlgeschlagen");
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const einschaetzungConfig = {
+    sehr_guenstig: { color: "#34D399", bg: "rgba(16,185,129,0.1)", label: "Sehr günstig" },
+    guenstig:      { color: "#34D399", bg: "rgba(16,185,129,0.08)", label: "Günstig" },
+    marktgerecht:  { color: "#60A5FA", bg: "rgba(59,130,246,0.08)", label: "Marktgerecht" },
+    leicht_teuer:  { color: "#FBBF24", bg: "rgba(217,119,6,0.08)", label: "Leicht über Markt" },
+    teuer:         { color: "#F87171", bg: "rgba(220,38,38,0.08)", label: "Zu teuer" },
+    sehr_teuer:    { color: "#F87171", bg: "rgba(220,38,38,0.12)", label: "Deutlich zu teuer" },
+    pruefen:       { color: "#94A3B8", bg: "rgba(148,163,184,0.08)", label: "Prüfen empfohlen" },
+  };
+
+  const handlungConfig = {
+    behalten:       { color: "#34D399", label: "✓ Vertrag behalten" },
+    verhandeln:     { color: "#FBBF24", label: "💬 Preis verhandeln" },
+    wechseln:       { color: "#F87171", label: "→ Wechsel prüfen" },
+    sofort_wechseln:{ color: "#F87171", label: "⚡ Sofort wechseln" },
+    pruefen:        { color: "#60A5FA", label: "🔍 Genauer prüfen" },
+  };
+
+  const formatBytes = (b) => b < 1024 * 1024 ? `${(b / 1024).toFixed(0)} KB` : `${(b / (1024 * 1024)).toFixed(1)} MB`;
+  const canStart = mode === "upload" ? files.length > 0 : !!selectedContractId;
+
+  return (
+    <div className="max-w-2xl mx-auto">
+      <div className="flex items-start justify-between mb-1 flex-wrap gap-2">
+        <h1 className="text-xl md:text-2xl font-extrabold tracking-tight" style={{ color: "#F8FAFC" }}>⚖️ Marktvergleich</h1>
+        {result && (
+          <button
+            onClick={() => druckMarktVergleich(result)}
+            className="rounded-lg px-3 py-1.5 text-[11px] font-semibold"
+            style={{ background: "rgba(59,130,246,0.12)", color: "#60A5FA", border: "1px solid rgba(59,130,246,0.25)" }}
+          >
+            🖨️ Als PDF
+          </button>
+        )}
+      </div>
+      <p className="text-sm mb-1" style={{ color: "#64748B" }}>Die KI vergleicht deine Vertragskonditionen mit dem deutschen Markt und gibt eine Empfehlung.</p>
+      {savedResult && savedResult._createdAt && !result && (
+        <p className="text-[11px] mb-4" style={{ color: "#475569" }}>Letzter Vergleich: {new Date(savedResult._createdAt).toLocaleDateString("de-DE")} · <button className="underline" style={{ color: "#818CF8" }} onClick={() => setResult(savedResult)}>Anzeigen</button></p>
+      )}
+      {result && result._createdAt && (
+        <p className="text-[11px] mb-4" style={{ color: "#475569" }}>Gespeichert am {new Date(result._createdAt).toLocaleDateString("de-DE")}</p>
+      )}
+      {!result && <div className="mb-4" />}
+
+      <Card className="mb-4">
+        {/* Mode Tabs */}
+        <div className="flex rounded-lg overflow-hidden mb-4" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+          {[["upload", "📤 PDF hochladen"], ["vertrag", "📋 Aus Vertrag wählen"]].map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(null); }}
+              className="flex-1 py-2 text-[12px] font-semibold"
+              style={{ background: mode === m ? "linear-gradient(135deg,#1D4ED8,#7C3AED)" : "transparent", color: mode === m ? "#fff" : "#64748B" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === "upload" && (
+          <>
+            <p className="text-[11px] mb-3" style={{ color: "#64748B" }}>Bis zu 3 PDFs (Versicherung, Strom, Mobilfunk, …) · max. 4 MB je Datei</p>
+            {files.length > 0 && (
+              <div className="flex flex-col gap-1.5 mb-3">
+                {files.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "#1E293B", border: "1px solid #334155" }}>
+                    <span className="text-sm">📄</span>
+                    <span className="text-[12px] flex-1 truncate" style={{ color: "#E2E8F0" }}>{f.name}</span>
+                    <span className="text-[11px]" style={{ color: "#475569" }}>{formatBytes(f.size)}</span>
+                    <button onClick={() => removeFile(i)} className="text-[11px]" style={{ color: "#F87171" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex gap-2 flex-wrap">
+              {files.length < 3 && (
+                <label className="inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold text-white cursor-pointer" style={{ background: "linear-gradient(135deg,#1D4ED8,#7C3AED)" }}>
+                  📤 PDF auswählen
+                  <input type="file" className="hidden" accept=".pdf" multiple onChange={handleFiles} />
+                </label>
+              )}
+            </div>
+          </>
+        )}
+
+        {mode === "vertrag" && (
+          <>
+            <p className="text-[11px] mb-3" style={{ color: "#64748B" }}>Wähle einen Vertrag aus deinem Bestand – die KI analysiert die hinterlegten PDFs.</p>
+            <select
+              className="w-full rounded-lg px-3 py-2.5 text-sm outline-none mb-3"
+              style={{ background: "#0F172A", border: "1px solid #334155", color: selectedContractId ? "#E2E8F0" : "#64748B" }}
+              value={selectedContractId}
+              onChange={e => setSelectedContractId(e.target.value)}
+            >
+              <option value="">Vertrag auswählen…</option>
+              {contractsWithPdfs.map(c => (
+                <option key={c.id} value={c.id}>{c.vertrag}{c.vertragspartner ? ` (${c.vertragspartner})` : ""}</option>
+              ))}
+            </select>
+          </>
+        )}
+
+        <div className="mt-3">
+          <button
+            onClick={handleStart}
+            disabled={loading || !canStart}
+            className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white"
+            style={{ background: loading || !canStart ? "#334155" : "linear-gradient(135deg,#059669,#0D9488)", opacity: loading || !canStart ? 0.6 : 1 }}
+          >
+            {loading ? "⏳ Analysiere…" : "⚖️ Marktvergleich starten"}
+          </button>
+        </div>
+      </Card>
+
+      {error && (
+        <Card className="mb-4" style={{ background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.3)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#F87171" }}>Fehler</p>
+          <p className="text-sm mt-1" style={{ color: "#94A3B8" }}>{error}</p>
+        </Card>
+      )}
+
+      {result && (() => {
+        const einsch = einschaetzungConfig[result.marktbewertung?.einschaetzung] || einschaetzungConfig.pruefen;
+        const handl = handlungConfig[result.empfehlung?.handlung] || handlungConfig.pruefen;
+        return (
+          <div className="flex flex-col gap-4">
+            {/* Bewertungs-Card */}
+            <Card style={{ background: einsch.bg, border: `1px solid ${einsch.color}40` }}>
+              <div className="flex items-center gap-3 mb-3">
+                <span className="text-2xl font-extrabold" style={{ color: einsch.color }}>{einsch.label}</span>
+                <span className="text-[11px] px-2.5 py-1 rounded-full font-semibold" style={{ background: `${handl.color}20`, color: handl.color }}>{handl.label}</span>
+              </div>
+              {result.marktbewertung?.ihr_preis_monatlich != null && result.marktbewertung?.marktdurchschnitt_monatlich != null && (
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="rounded-xl px-4 py-3 text-center" style={{ background: "#0F172A" }}>
+                    <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#64748B" }}>Dein Preis</p>
+                    <p className="text-xl font-extrabold" style={{ color: "#F8FAFC" }}>{Number(result.marktbewertung.ihr_preis_monatlich).toFixed(2)} €<span className="text-xs font-normal">/Mo</span></p>
+                  </div>
+                  <div className="rounded-xl px-4 py-3 text-center" style={{ background: "#0F172A" }}>
+                    <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#64748B" }}>Marktdurchschnitt</p>
+                    <p className="text-xl font-extrabold" style={{ color: "#94A3B8" }}>{Number(result.marktbewertung.marktdurchschnitt_monatlich).toFixed(2)} €<span className="text-xs font-normal">/Mo</span></p>
+                  </div>
+                </div>
+              )}
+              {result.marktbewertung?.differenz_jaehrlich != null && Math.abs(result.marktbewertung.differenz_jaehrlich) > 0.5 && (
+                <div className="rounded-lg px-3 py-2 mb-3" style={{ background: "#0F172A" }}>
+                  <p className="text-[12px]" style={{ color: "#94A3B8" }}>
+                    {result.marktbewertung.differenz_jaehrlich > 0
+                      ? <span>Du zahlst ca. <strong style={{ color: "#F87171" }}>{Number(result.marktbewertung.differenz_jaehrlich).toFixed(0)} € mehr</strong> pro Jahr als der Marktdurchschnitt.</span>
+                      : <span>Du sparst ca. <strong style={{ color: "#34D399" }}>{Math.abs(Number(result.marktbewertung.differenz_jaehrlich)).toFixed(0)} €</strong> pro Jahr gegenüber dem Marktdurchschnitt.</span>
+                    }
+                  </p>
+                </div>
+              )}
+              {result.marktbewertung?.begruendung && (
+                <p className="text-[12px] leading-relaxed" style={{ color: "#94A3B8" }}>{result.marktbewertung.begruendung}</p>
+              )}
+            </Card>
+
+            {/* Empfehlung */}
+            {result.empfehlung?.zusammenfassung && (
+              <Card>
+                <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Empfehlung</p>
+                <p className="text-sm leading-relaxed" style={{ color: "#E2E8F0" }}>{result.empfehlung.zusammenfassung}</p>
+                {result.empfehlung.potenzielle_ersparnis_jaehrlich > 0 && (
+                  <div className="mt-3 rounded-lg px-3 py-2" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                    <p className="text-[12px]" style={{ color: "#34D399" }}>💰 Sparpotenzial: bis zu <strong>{Number(result.empfehlung.potenzielle_ersparnis_jaehrlich).toFixed(0)} €/Jahr</strong></p>
+                  </div>
+                )}
+              </Card>
+            )}
+
+            {/* Alternativen */}
+            {result.alternative_anbieter?.length > 0 && (
+              <Card>
+                <p className="text-[11px] uppercase tracking-wider font-semibold mb-3" style={{ color: "#64748B" }}>Alternative Anbieter</p>
+                <div className="flex flex-col gap-2">
+                  {result.alternative_anbieter.map((a, i) => (
+                    <div key={i} className="rounded-xl px-4 py-3" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>{a.anbieter}</span>
+                        {a.geschaetzter_preis_monatlich != null && (
+                          <span className="text-sm font-bold" style={{ color: "#34D399" }}>~{Number(a.geschaetzter_preis_monatlich).toFixed(2)} €/Mo</span>
+                        )}
+                      </div>
+                      {a.vorteile && <p className="text-[11px]" style={{ color: "#94A3B8" }}>✓ {a.vorteile}</p>}
+                      {a.nachteile && <p className="text-[11px] mt-0.5" style={{ color: "#475569" }}>○ {a.nachteile}</p>}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Tipps */}
+            {result.tipps?.length > 0 && (
+              <Card>
+                <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Tipps</p>
+                <ul className="flex flex-col gap-1.5">
+                  {result.tipps.map((t, i) => (
+                    <li key={i} className="flex gap-2 text-[12px]" style={{ color: "#94A3B8" }}>
+                      <span style={{ color: "#60A5FA" }}>→</span> {t}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+
+            {/* Extrahierte Docs */}
+            {result.dokumente?.length > 0 && (
+              <Card>
+                <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Analysierte Dokumente</p>
+                {result.dokumente.map((d, i) => (
+                  <div key={i} className="rounded-lg px-3 py-2 mb-1" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                    <p className="text-[12px] font-semibold" style={{ color: "#F8FAFC" }}>{d.vertragstyp}{d.anbieter ? ` – ${d.anbieter}` : ""}</p>
+                    <p className="text-[11px]" style={{ color: "#64748B" }}>{d.dateiname}</p>
+                    {d.leistungen?.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {d.leistungen.slice(0, 5).map((l, j) => (
+                          <span key={j} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(99,102,241,0.1)", color: "#818CF8" }}>{l}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </Card>
+            )}
+
+            <button
+              onClick={() => { setResult(null); setFiles([]); setSelectedContractId(""); setError(null); }}
+              className="text-sm py-2"
+              style={{ color: "#475569" }}
+            >
+              ← Neuen Vergleich starten
+            </button>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+function SimulationErgebnis({ result }) {
+  if (!result) return null;
+  const { direkte_auswirkung, indirekte_auswirkungen, netto_auswirkung, alternative_szenarien, aktion } = result;
+
+  const typColor = { rabatt: "#FBBF24", deckungsluecke: "#F87171", sonstiges: "#60A5FA" };
+  const risikoColor = { hoch: "#F87171", mittel: "#FBBF24", niedrig: "#34D399" };
+
+  return (
+    <div className="flex flex-col gap-4">
+      {aktion && (
+        <div className="rounded-xl px-4 py-3" style={{ background: "#1E293B", border: "1px solid #334155" }}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold mb-1" style={{ color: "#64748B" }}>Simulierte Aktion</p>
+          <p className="text-sm font-medium" style={{ color: "#E2E8F0" }}>{aktion}</p>
+        </div>
+      )}
+
+      {direkte_auswirkung && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl px-4 py-3 text-center" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#64748B" }}>Ersparnis/Monat</p>
+            <p className="text-xl font-extrabold" style={{ color: "#34D399" }}>{Number(direkte_auswirkung.ersparnis_monatlich || 0).toFixed(2)} €</p>
+          </div>
+          <div className="rounded-xl px-4 py-3 text-center" style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <p className="text-[10px] uppercase tracking-wider mb-1" style={{ color: "#64748B" }}>Ersparnis/Jahr</p>
+            <p className="text-xl font-extrabold" style={{ color: "#34D399" }}>{Number(direkte_auswirkung.ersparnis_jaehrlich || 0).toFixed(2)} €</p>
+          </div>
+        </div>
+      )}
+
+      {indirekte_auswirkungen?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Indirekte Auswirkungen</p>
+          {indirekte_auswirkungen.map((a, i) => (
+            <div key={i} className="rounded-xl px-4 py-3 mb-2" style={{ background: "#1E293B", border: `1px solid ${typColor[a.typ] || "#334155"}40` }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[11px] font-semibold" style={{ color: typColor[a.typ] || "#94A3B8" }}>{a.beschreibung}</span>
+                {a.risiko_bewertung && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: (risikoColor[a.risiko_bewertung] || "#60A5FA") + "20", color: risikoColor[a.risiko_bewertung] || "#60A5FA" }}>
+                    Risiko: {a.risiko_bewertung}
+                  </span>
+                )}
+                {a.finanzielle_auswirkung != null && (
+                  <span className="text-[11px] font-bold ml-auto" style={{ color: a.finanzielle_auswirkung > 0 ? "#F87171" : "#34D399" }}>
+                    {a.finanzielle_auswirkung > 0 ? "+" : ""}{Number(a.finanzielle_auswirkung).toFixed(2)} €
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] leading-relaxed" style={{ color: "#94A3B8" }}>{a.details}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {netto_auswirkung && (
+        <div className="rounded-xl px-4 py-3" style={{ background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.3)" }}>
+          <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Netto-Ergebnis</p>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="text-center">
+              <p className="text-[10px]" style={{ color: "#64748B" }}>Netto/Monat</p>
+              <p className="text-lg font-extrabold" style={{ color: "#A78BFA" }}>{Number(netto_auswirkung.ersparnis_nach_rabattverlust_monatlich || 0).toFixed(2)} €</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px]" style={{ color: "#64748B" }}>Netto/Jahr</p>
+              <p className="text-lg font-extrabold" style={{ color: "#A78BFA" }}>{Number(netto_auswirkung.ersparnis_nach_rabattverlust_jaehrlich || 0).toFixed(2)} €</p>
+            </div>
+          </div>
+          {netto_auswirkung.empfehlung && (
+            <p className="text-[11px] leading-relaxed" style={{ color: "#CBD5E1" }}>{netto_auswirkung.empfehlung}</p>
+          )}
+        </div>
+      )}
+
+      {alternative_szenarien?.length > 0 && (
+        <div>
+          <p className="text-[11px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#64748B" }}>Alternative Szenarien</p>
+          {alternative_szenarien.map((s, i) => (
+            <div key={i} className="rounded-xl px-4 py-3 mb-2" style={{ background: "rgba(59,130,246,0.06)", border: "1px solid rgba(59,130,246,0.2)" }}>
+              <p className="text-[11px] font-semibold mb-1" style={{ color: "#60A5FA" }}>{s.szenario}</p>
+              {s.geschaetzte_kosten && <p className="text-[11px]" style={{ color: "#94A3B8" }}>Geschätzte Kosten: <strong>{s.geschaetzte_kosten}</strong></p>}
+              {s.netto_ersparnis_monatlich && <p className="text-[11px]" style={{ color: "#94A3B8" }}>Netto-Ersparnis: <strong>{s.netto_ersparnis_monatlich}/Mo</strong></p>}
+              {s.vorteil && <p className="text-[11px] mt-1 leading-relaxed" style={{ color: "#64748B" }}>{s.vorteil}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TabSimulation({ contract }) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [customFrage, setCustomFrage] = useState("");
+
+  const handleSimulate = async (frage) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await fetch("/api/analyse/simulation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ contractId: contract.id, frage: frage || undefined }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResult(data);
+      } else {
+        setError(data.error || "Simulation fehlgeschlagen");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  return (
+    <div>
+      <Card className="mb-4">
+        <h3 className="text-sm font-bold mb-1" style={{ color: "#F8FAFC" }}>🤖 KI-Auswirkungs-Simulation</h3>
+        <p className="text-[11px] mb-4" style={{ color: "#64748B" }}>
+          Berechnet finanzielle und vertragliche Auswirkungen — inkl. Rabattverluste und Deckungslücken.
+        </p>
+
+        <button
+          onClick={() => handleSimulate(null)}
+          disabled={loading}
+          className="rounded-lg px-4 py-2.5 text-sm font-semibold text-white mb-3 w-full"
+          style={{ background: loading ? "#334155" : "linear-gradient(135deg,#7C3AED,#1D4ED8)", opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? "⏳ Analysiere…" : `🤖 Kündigung von „${contract.vertrag}" simulieren`}
+        </button>
+
+        <div className="flex gap-2">
+          <input
+            className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
+            style={{ background: "#0F172A", border: "1px solid #334155", color: "#E2E8F0" }}
+            placeholder="Eigene Frage z.B. Was passiert wenn ich zur Hälfte kündige?"
+            value={customFrage}
+            onChange={e => setCustomFrage(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && customFrage.trim() && handleSimulate(customFrage)}
+          />
+          <button
+            onClick={() => customFrage.trim() && handleSimulate(customFrage)}
+            disabled={loading || !customFrage.trim()}
+            className="rounded-lg px-4 py-2 text-sm font-semibold"
+            style={{ background: "rgba(124,58,237,0.2)", color: "#A78BFA", opacity: !customFrage.trim() || loading ? 0.4 : 1 }}
+          >
+            Fragen
+          </button>
+        </div>
+      </Card>
+
+      {error && (
+        <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#F87171" }}>Fehler</p>
+          <p className="text-[11px] mt-1" style={{ color: "#94A3B8" }}>{error}</p>
+          {error.includes("ANTHROPIC_API_KEY") && (
+            <p className="text-[11px] mt-2" style={{ color: "#64748B" }}>Bitte ANTHROPIC_API_KEY in der .env.local Datei konfigurieren.</p>
+          )}
+        </div>
+      )}
+
+      {result && <SimulationErgebnis result={result} />}
+    </div>
+  );
+}
+
+function KiAnalyse() {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/analyse/gesamt")
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.modus === "gesamtanalyse") {
+          setResult(data);
+          if (data._createdAt) setLastUpdated(data._createdAt);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleAnalyse = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/analyse/gesamt", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        setResult(data);
+        if (data._createdAt) setLastUpdated(data._createdAt);
+      } else {
+        setError(data.error || "Analyse fehlgeschlagen");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+    setLoading(false);
+  };
+
+  const { zusammenfassung, anbieter_cluster, versicherungs_check, kostenoptimierung, fristen_warnung } = result || {};
+  const prioritaetColor = { hoch: "#F87171", mittel: "#FBBF24", niedrig: "#34D399" };
+
+  return (
+    <div>
+      <h1 className="text-xl md:text-2xl font-extrabold tracking-tight mb-1" style={{ color: "#F8FAFC" }}>🤖 KI-Vertragsanalyse</h1>
+      <p className="text-sm mb-4" style={{ color: "#64748B" }}>
+        KI-gestützte Analyse aller Verträge — Rabatte, Deckungslücken und Optimierungspotenziale.
+      </p>
+
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <button
+          onClick={handleAnalyse}
+          disabled={loading}
+          className="rounded-lg px-5 py-2.5 text-sm font-semibold text-white"
+          style={{ background: loading ? "#334155" : "linear-gradient(135deg,#7C3AED,#1D4ED8)", opacity: loading ? 0.7 : 1 }}
+        >
+          {loading ? "⏳ Analysiere alle Verträge…" : "🔍 Gesamtanalyse starten"}
+        </button>
+        {lastUpdated && !loading && (
+          <span className="text-[11px]" style={{ color: "#475569" }}>
+            Letztes Ergebnis: {new Date(lastUpdated).toLocaleString("de-DE")}
+          </span>
+        )}
+      </div>
+
+      {loading && (
+        <Card className="text-center !py-12 mb-4">
+          <p className="text-3xl mb-3">🤖</p>
+          <p className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>KI analysiert alle Verträge…</p>
+          <p className="text-[11px] mt-2" style={{ color: "#64748B" }}>Dies kann 15–30 Sekunden dauern</p>
+        </Card>
+      )}
+
+      {error && (
+        <div className="rounded-xl px-4 py-3 mb-4" style={{ background: "rgba(220,38,38,0.1)", border: "1px solid rgba(220,38,38,0.3)" }}>
+          <p className="text-sm font-semibold" style={{ color: "#F87171" }}>Fehler bei der Analyse</p>
+          <p className="text-[11px] mt-1" style={{ color: "#94A3B8" }}>{error}</p>
+          {error.includes("ANTHROPIC_API_KEY") && (
+            <p className="text-[11px] mt-2" style={{ color: "#64748B" }}>Bitte ANTHROPIC_API_KEY in der .env.local Datei konfigurieren.</p>
+          )}
+        </div>
+      )}
+
+      {zusammenfassung && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+          {[
+            { label: "Verträge", value: zusammenfassung.anzahl_vertraege, color: "#60A5FA" },
+            { label: "Monatlich", value: zusammenfassung.monatliche_gesamtkosten != null ? `${Number(zusammenfassung.monatliche_gesamtkosten).toFixed(2)} €` : "—", color: "#F87171" },
+            { label: "Anbieter", value: zusammenfassung.anzahl_anbieter, color: "#A78BFA" },
+            { label: "Versicherungen", value: zusammenfassung.anzahl_versicherungen, color: "#34D399" },
+          ].map(m => (
+            <div key={m.label} className="rounded-xl px-4 py-3 text-center" style={{ background: "#1E293B", border: "1px solid #334155" }}>
+              <p className="text-xl font-extrabold" style={{ color: m.color }}>{m.value ?? "—"}</p>
+              <p className="text-[11px] mt-0.5" style={{ color: "#64748B" }}>{m.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {anbieter_cluster?.length > 0 && (
+        <Card className="mb-4">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>📦 Anbieter-Cluster</h3>
+          <div className="flex flex-col gap-3">
+            {anbieter_cluster.map((a, i) => (
+              <div key={i} className="rounded-xl px-4 py-3" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>{a.anbieter}</span>
+                  <span className="text-sm font-bold" style={{ color: "#60A5FA" }}>{Number(a.gesamtkosten_monatlich || 0).toFixed(2)} €/Mo</span>
+                </div>
+                {a.vertraege?.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {a.vertraege.map((v, j) => (
+                      <span key={j} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(59,130,246,0.1)", color: "#93C5FD" }}>{v}</span>
+                    ))}
+                  </div>
+                )}
+                {a.rabatt_aktiv && a.rabatt_details && (
+                  <p className="text-[11px]" style={{ color: "#A78BFA" }}>
+                    ✓ {a.rabatt_details}
+                    {a.geschaetzter_rabatt_jaehrlich ? ` · ca. ${Number(a.geschaetzter_rabatt_jaehrlich).toFixed(2)} €/Jahr` : ""}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {versicherungs_check && (
+        <Card className="mb-4">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>🛡️ Versicherungs-Check</h3>
+          {versicherungs_check.vorhanden?.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#475569" }}>Vorhanden</p>
+              <div className="flex flex-wrap gap-1.5">
+                {versicherungs_check.vorhanden.map((v, i) => (
+                  <span key={i} className="text-[11px] px-2.5 py-1 rounded-full font-medium" style={{ background: "rgba(16,185,129,0.1)", color: "#34D399" }}>
+                    ✓ {v.typ}{v.anbieter ? ` (${v.anbieter})` : ""}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {versicherungs_check.fehlend?.length > 0 && (
+            <div className="mb-3">
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#475569" }}>Fehlend / Empfohlen</p>
+              {versicherungs_check.fehlend.map((f, i) => (
+                <div key={i} className="rounded-lg px-3 py-2 mb-1.5" style={{ background: `${prioritaetColor[f.prioritaet] || "#94A3B8"}10`, border: `1px solid ${prioritaetColor[f.prioritaet] || "#94A3B8"}30` }}>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold" style={{ color: prioritaetColor[f.prioritaet] || "#94A3B8" }}>✗ {f.typ}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{ background: (prioritaetColor[f.prioritaet] || "#94A3B8") + "20", color: prioritaetColor[f.prioritaet] || "#94A3B8" }}>
+                      {f.prioritaet}
+                    </span>
+                  </div>
+                  {f.begruendung && <p className="text-[10px] mt-0.5" style={{ color: "#64748B" }}>{f.begruendung}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+          {versicherungs_check.ueberschneidungen?.length > 0 && (
+            <div>
+              <p className="text-[10px] uppercase tracking-wider font-semibold mb-2" style={{ color: "#475569" }}>Mögliche Überschneidungen</p>
+              {versicherungs_check.ueberschneidungen.map((u, i) => (
+                <div key={i} className="rounded-lg px-3 py-2 mb-1.5" style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.2)" }}>
+                  <p className="text-[11px] font-semibold" style={{ color: "#FBBF24" }}>⚠ {u.risiko}</p>
+                  <p className="text-[10px] mt-0.5" style={{ color: "#64748B" }}>{u.hinweis}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {kostenoptimierung?.length > 0 && (
+        <Card className="mb-4">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>💡 Kostenoptimierung</h3>
+          {kostenoptimierung.map((k, i) => (
+            <div key={i} className="rounded-xl px-4 py-3 mb-3" style={{ background: "#0F172A", border: "1px solid #1E293B" }}>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>{k.bereich}</span>
+                <span className="text-sm font-bold" style={{ color: "#F87171" }}>{Number(k.aktuelle_kosten_monatlich || 0).toFixed(2)} €/Mo</span>
+              </div>
+              {k.vertraege?.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {k.vertraege.map((v, j) => (
+                    <span key={j} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(239,68,68,0.1)", color: "#FCA5A5" }}>{v}</span>
+                  ))}
+                </div>
+              )}
+              <p className="text-[11px] mb-1 leading-relaxed" style={{ color: "#CBD5E1" }}>{k.empfehlung}</p>
+              {k.geschaetztes_sparpotenzial && (
+                <p className="text-[11px] font-semibold" style={{ color: "#34D399" }}>Sparpotenzial: {k.geschaetztes_sparpotenzial}</p>
+              )}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {fristen_warnung?.length > 0 && (
+        <Card className="mb-4">
+          <h3 className="text-sm font-bold mb-4" style={{ color: "#F8FAFC" }}>⏰ Fristen-Warnungen</h3>
+          {fristen_warnung.map((f, i) => (
+            <div key={i} className="rounded-xl px-4 py-3 mb-2" style={{ background: "rgba(220,38,38,0.06)", border: "1px solid rgba(220,38,38,0.2)" }}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold" style={{ color: "#F8FAFC" }}>{f.vertrag}</span>
+                <span className="text-[11px] font-semibold" style={{ color: "#F87171" }}>{f.status}</span>
+              </div>
+              {f.kuendigungsfrist && <p className="text-[11px] mt-0.5" style={{ color: "#64748B" }}>Frist: {f.kuendigungsfrist}</p>}
+              {f.handlungsbedarf && <p className="text-[11px] mt-1" style={{ color: "#94A3B8" }}>{f.handlungsbedarf}</p>}
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {!result && !loading && !error && (
+        <Card className="text-center !py-12">
+          <p className="text-5xl mb-3">🤖</p>
+          <p className="text-base font-semibold" style={{ color: "#F8FAFC" }}>Noch keine Analyse vorhanden</p>
+          <p className="text-sm mt-2" style={{ color: "#64748B" }}>Klicke auf „Gesamtanalyse starten" um alle Verträge zu analysieren.</p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // ─── Main App ────────────────────────────────────────
 
 export default function VertragsPilot({ initialContracts, kategorien: initialKategorien, initialKonten = [] }) {
@@ -2678,6 +3695,8 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
     { id: "list", icon: "📋", label: "Verträge / Periodische Zahlung" },
     { id: "warnings", icon: "⚠️", label: `Warnungen${warningCount > 0 ? ` (${warningCount})` : ""}` },
     { id: "kosten", icon: "💸", label: "Kosten-Übersicht" },
+    { id: "ki-analyse", icon: "🤖", label: "KI-Analyse" },
+    { id: "marktvergleich", icon: "⚖️", label: "Marktvergleich" },
     { id: "calendar", icon: "📅", label: "Kalender" },
     { id: "einstellungen", icon: "⚙️", label: "Einstellungen" },
     { id: "hilfe", icon: "❓", label: "Hilfe" },
@@ -2793,6 +3812,8 @@ export default function VertragsPilot({ initialContracts, kategorien: initialKat
         {page === "form" && <ContractForm contract={selectedContract} kategorien={kategorien} konten={konten} onKontoAdded={k => setKonten(ks => [...ks, k].sort((a,b) => a.bezeichnung.localeCompare(b.bezeichnung)))} navigate={navigate} onSave={handleSave} />}
         {page === "warnings" && <Warnings contracts={contracts} navigate={navigate} />}
         {page === "kosten" && <KostenUebersicht contracts={contracts} katColors={katColors} />}
+        {page === "ki-analyse" && <KiAnalyse contracts={contracts} />}
+        {page === "marktvergleich" && <MarktVergleich contracts={contracts} />}
         {page === "calendar" && <CalendarView contracts={contracts} />}
         {page === "einstellungen" && <Einstellungen kategorien={kategorien} setKategorien={setKategorien} konten={konten} setKonten={setKonten} setContracts={setContracts} />}
         {page === "hilfe" && <Hilfe />}
